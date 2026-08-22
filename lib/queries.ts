@@ -1,0 +1,165 @@
+import { createClient } from '@/lib/supabase/server';
+import { equipmentCodesByKeyword } from '@/lib/constants';
+import type { Category, Training, TrainingWithJoin } from '@/lib/types';
+
+/** MVP の想定件数。ページネーションは作らない（100件到達時に将来対応）。 */
+const TRAINING_FETCH_LIMIT = 100;
+
+/**
+ * 一覧で使う 1 クエリ。
+ * カテゴリーは join でまとめて取得し、種目ごとに問い合わせない（N+1 にしない）。
+ */
+const TRAINING_SELECT =
+  '*, training_categories(sort_order, categories(id, name, slug, sort_order))';
+
+/**
+ * ネストした training_categories を、categories.sort_order 昇順の配列へ平坦化する。
+ */
+function flatten(row: TrainingWithJoin): Training {
+  const { training_categories, ...rest } = row;
+
+  const categories = (training_categories ?? [])
+    .map((tc) => tc.categories)
+    .filter((c): c is Category => c !== null)
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  return { ...rest, categories };
+}
+
+/** 一覧用: トレーニングを1クエリで全件取得する */
+export async function fetchTrainings(): Promise<Training[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('trainings')
+    .select(TRAINING_SELECT)
+    .order('created_at', { ascending: false })
+    .limit(TRAINING_FETCH_LIMIT);
+
+  if (error) {
+    throw new Error(`トレーニングの取得に失敗しました: ${error.message}`);
+  }
+
+  return ((data ?? []) as unknown as TrainingWithJoin[]).map(flatten);
+}
+
+/** 詳細用: id 指定で1件取得する。見つからなければ null */
+export async function fetchTrainingById(id: string): Promise<Training | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('trainings')
+    .select(TRAINING_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`トレーニングの取得に失敗しました: ${error.message}`);
+  }
+  if (!data) return null;
+
+  return flatten(data as unknown as TrainingWithJoin);
+}
+
+/** 絞り込みチップ用: カテゴリーマスタを sort_order 昇順で取得する */
+export async function fetchCategories(): Promise<Category[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name, slug, sort_order')
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    throw new Error(`カテゴリーの取得に失敗しました: ${error.message}`);
+  }
+
+  return (data ?? []) as Category[];
+}
+
+/**
+ * キーワード検索とカテゴリー絞り込み（サーバー側で実行する）。
+ *
+ * 検索対象: 題名 / 簡単な説明 / 詳しい説明 / カテゴリー名 / 道具の表示名
+ * 道具は DB にコード値（ladder 等）で入っているので、lib/constants.ts の
+ * 逆引きで検索語をコード値へ変換してから突き合わせる（「ラダー」→ ladder）。
+ */
+export function filterTrainings(
+  trainings: Training[],
+  options: { query?: string; categorySlug?: string },
+): Training[] {
+  const query = (options.query ?? '').trim().toLowerCase();
+  const categorySlug = options.categorySlug ?? '';
+
+  // 検索語に部分一致する道具コード（例:「ラダー」→ ['ladder']）
+  const equipmentCodes = query ? equipmentCodesByKeyword(query) : [];
+
+  return trainings.filter((training) => {
+    if (categorySlug) {
+      const hasCategory = training.categories.some((c) => c.slug === categorySlug);
+      if (!hasCategory) return false;
+    }
+
+    if (!query) return true;
+
+    const haystack = [
+      training.title,
+      training.short_description,
+      training.description,
+      ...training.categories.map((c) => c.name),
+    ]
+      .join('\n')
+      .toLowerCase();
+
+    if (haystack.includes(query)) return true;
+
+    return equipmentCodes.some((code) => training.equipment.includes(code));
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* 管理画面用                                                          */
+/* ------------------------------------------------------------------ */
+
+/** 管理一覧用: 更新日の新しい順で取得する */
+export async function fetchTrainingsForAdmin(): Promise<Training[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('trainings')
+    .select(TRAINING_SELECT)
+    .order('updated_at', { ascending: false })
+    .limit(TRAINING_FETCH_LIMIT);
+
+  if (error) {
+    throw new Error(`トレーニングの取得に失敗しました: ${error.message}`);
+  }
+
+  return ((data ?? []) as unknown as TrainingWithJoin[]).map(flatten);
+}
+
+export type CategoryWithUsage = Category & {
+  /** このカテゴリーを使っている種目数。1件以上なら削除できない */
+  usageCount: number;
+};
+
+/** カテゴリー管理用: 使用中の種目数つきで取得する（1クエリ） */
+export async function fetchCategoriesWithUsage(): Promise<CategoryWithUsage[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name, slug, sort_order, training_categories(count)')
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    throw new Error(`カテゴリーの取得に失敗しました: ${error.message}`);
+  }
+
+  type Row = Category & { training_categories: { count: number }[] | null };
+
+  return ((data ?? []) as unknown as Row[]).map(({ training_categories, ...category }) => ({
+    ...category,
+    usageCount: training_categories?.[0]?.count ?? 0,
+  }));
+}
