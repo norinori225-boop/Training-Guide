@@ -74,8 +74,17 @@ export default async function HomePage({ searchParams }: PageProps<'/'>) {
         <EmptyState hasTrainings={trainings.length > 0} />
       )}
 
-      <footer className="mt-2 border-t border-slate-200 pt-4">
+      <footer className="mt-2 flex flex-col gap-4 border-t border-slate-200 pt-4">
         <SafetyNotice />
+
+        {/* 管理者だけが使うリンク。目立たせないが、スマホからも入れるように置いておく。
+            未ログインなら middleware がログイン画面へ回す。 */}
+        <Link
+          href="/admin"
+          className="inline-flex min-h-[44px] items-center justify-center text-xs font-medium text-slate-400 active:text-slate-600"
+        >
+          管理者ログイン
+        </Link>
       </footer>
     </div>
   );

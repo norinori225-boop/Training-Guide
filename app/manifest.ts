@@ -38,5 +38,14 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
+    shortcuts: [
+      {
+        name: "管理画面をひらく",
+        short_name: "管理画面",
+        description: "トレーニングの追加・編集をする（管理者のみ）",
+        url: "/admin",
+        icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+    ],
   };
 }
