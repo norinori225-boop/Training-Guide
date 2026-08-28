@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "アジリティートレーニング",
-  description: "親子で楽しむアジリティートレーニングの紹介アプリ",
-  applicationName: "アジリティートレーニング",
+  title: "ODORIKOトレーニング",
+  description: "親子で楽しむ体遊び・リフティングのトレーニング紹介アプリ",
+  applicationName: "ODORIKOトレーニング",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "アジリティー",
+    title: "ODORIKO",
     statusBarStyle: "default",
   },
   icons: {

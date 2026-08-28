@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "アジリティートレーニング",
-    short_name: "アジリティー",
-    description: "親子で楽しむアジリティートレーニングの紹介アプリ",
+    name: "ODORIKOトレーニング",
+    short_name: "ODORIKO",
+    description: "親子で楽しむ体遊び・リフティングのトレーニング紹介アプリ",
     start_url: "/",
     scope: "/",
     display: "standalone",
