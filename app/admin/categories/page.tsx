@@ -2,20 +2,32 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AdminGuard } from '@/components/AdminGuard';
 import { CategoryManager } from '@/components/CategoryManager';
+import { GenreTabs } from '@/components/GenreTabs';
+import { DEFAULT_GENRE, isGenreCode } from '@/lib/constants';
 import { fetchCategoriesWithUsage } from '@/lib/queries';
+import type { GenreCode } from '@/lib/types';
 
 export const metadata: Metadata = { title: 'カテゴリー管理' };
 
-export default function AdminCategoriesPage() {
+export default async function AdminCategoriesPage({
+  searchParams,
+}: PageProps<'/admin/categories'>) {
+  const params = await searchParams;
+
+  // カテゴリーは必ずどれかのジャンルに属するので「すべて」タブは作らない。
+  // 追加フォームがどのジャンルで登録するのか曖昧にならないようにするため。
+  const raw = typeof params.genre === 'string' ? params.genre : '';
+  const genre: GenreCode = isGenreCode(raw) ? raw : DEFAULT_GENRE;
+
   return (
     <AdminGuard>
-      <CategoryAdmin />
+      <CategoryAdmin genre={genre} />
     </AdminGuard>
   );
 }
 
-async function CategoryAdmin() {
-  const categories = await fetchCategoriesWithUsage();
+async function CategoryAdmin({ genre }: { genre: GenreCode }) {
+  const categories = await fetchCategoriesWithUsage(genre);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-6">
@@ -26,7 +38,9 @@ async function CategoryAdmin() {
         </p>
       </header>
 
-      <CategoryManager categories={categories} />
+      <GenreTabs basePath="/admin/categories" selected={genre} />
+
+      <CategoryManager genre={genre} categories={categories} />
 
       <Link
         href="/admin"

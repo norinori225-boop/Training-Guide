@@ -15,12 +15,12 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4 px-4 py-16 text-center">
+    <div className="flex flex-col items-center gap-4 py-10 text-center">
       <p className="text-4xl" aria-hidden="true">
         😵
       </p>
       <h1 className="text-lg font-bold text-slate-900">
-        トレーニングを読み込めませんでした
+        一覧を読み込めませんでした
       </h1>
       <p className="text-sm leading-relaxed text-slate-600">
         通信状態を確認して、もう一度お試しください。

@@ -6,8 +6,10 @@ import {
   deleteCategoryAction,
   updateCategoryAction,
 } from '@/app/actions/categories';
+import { GENRE_LABELS } from '@/lib/constants';
 import type { ActionResult } from '@/lib/schemas';
 import type { CategoryWithUsage } from '@/lib/queries';
+import type { GenreCode } from '@/lib/types';
 import { ErrorSummary, FieldError, inputClass } from '@/components/FormField';
 
 const INITIAL_STATE: ActionResult = { ok: true };
@@ -15,30 +17,47 @@ const INITIAL_STATE: ActionResult = { ok: true };
 const smallInputClass =
   'min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200';
 
+/**
+ * カテゴリー管理。
+ * genre はタブで選ばれているジャンルで、追加も表示もこのジャンルに閉じる。
+ */
 export function CategoryManager({
+  genre,
   categories,
 }: {
+  genre: GenreCode;
   categories: CategoryWithUsage[];
 }) {
   return (
     <div className="flex flex-col gap-6">
-      <CreateCategoryForm />
+      {/* ジャンルを切り替えるとフォームの入力途中の値を持ち越さないよう、
+          key でマウントし直す（別ジャンルに書きかけの slug が残らないように） */}
+      <CreateCategoryForm key={genre} genre={genre} />
 
       <section>
         <h2 className="mb-2 text-base font-bold text-slate-900">
-          登録済みカテゴリー（{categories.length}件）
+          {GENRE_LABELS[genre]}のカテゴリー（{categories.length}件）
         </h2>
-        <ul className="flex flex-col gap-3">
-          {categories.map((category) => (
-            <CategoryRow key={category.id} category={category} />
-          ))}
-        </ul>
+
+        {categories.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
+            このジャンルにはまだカテゴリーがありません。
+            <br />
+            上のフォームから追加してください。
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {categories.map((category) => (
+              <CategoryRow key={category.id} category={category} />
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
 }
 
-function CreateCategoryForm() {
+function CreateCategoryForm({ genre }: { genre: GenreCode }) {
   const [state, formAction, isPending] = useActionState<ActionResult, FormData>(
     createCategoryAction,
     INITIAL_STATE,
@@ -58,11 +77,17 @@ function CreateCategoryForm() {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="mb-3 text-base font-bold text-slate-900">
+      <h2 className="mb-1 text-base font-bold text-slate-900">
         カテゴリーを追加
       </h2>
+      <p className="mb-3 text-xs text-slate-500">
+        「{GENRE_LABELS[genre]}」のカテゴリーとして登録されます。
+      </p>
 
       <form ref={formRef} action={formAction} className="flex flex-col gap-3">
+        {/* どのジャンルで登録するかは、上のタブの選択に従う */}
+        <input type="hidden" name="genre" value={genre} />
+
         <ErrorSummary message={state.message} fieldErrors={state.fieldErrors} />
 
         <div>
@@ -91,6 +116,8 @@ function CreateCategoryForm() {
           </label>
           <p className="text-xs text-slate-500">
             半角の英小文字・数字・ハイフンのみ。登録後は変更できません。
+            <br />
+            同じ slug でも、ジャンルが違えば別々に登録できます。
           </p>
           <input
             id="new-slug"
@@ -251,6 +278,8 @@ function EditCategoryForm({
 
       <p className="text-xs text-slate-500">
         slug（{category.slug}）は URL・コード用のため変更できません。
+        <br />
+        ジャンルの変更もできません（使用中の種目との対応が崩れるため）。
       </p>
 
       <div className="flex gap-2">

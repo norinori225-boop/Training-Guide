@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { equipmentCodesByKeyword } from '@/lib/constants';
-import type { Category, Training, TrainingWithJoin } from '@/lib/types';
+import type { Category, GenreCode, Training, TrainingWithJoin } from '@/lib/types';
 
 /** MVP の想定件数。ページネーションは作らない（100件到達時に将来対応）。 */
 const TRAINING_FETCH_LIMIT = 100;
@@ -10,7 +10,7 @@ const TRAINING_FETCH_LIMIT = 100;
  * カテゴリーは join でまとめて取得し、種目ごとに問い合わせない（N+1 にしない）。
  */
 const TRAINING_SELECT =
-  '*, training_categories(sort_order, categories(id, name, slug, sort_order))';
+  '*, training_categories(sort_order, categories(id, genre, name, slug, sort_order))';
 
 /**
  * ネストした training_categories を、categories.sort_order 昇順の配列へ平坦化する。
@@ -26,15 +26,22 @@ function flatten(row: TrainingWithJoin): Training {
   return { ...rest, categories };
 }
 
-/** 一覧用: トレーニングを1クエリで全件取得する */
-export async function fetchTrainings(): Promise<Training[]> {
+/**
+ * 一覧用: トレーニングを1クエリで取得する。
+ * genre を渡すとそのジャンルだけ、省略すると全ジャンルを返す（管理画面用）。
+ */
+export async function fetchTrainings(genre?: GenreCode): Promise<Training[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let request = supabase
     .from('trainings')
     .select(TRAINING_SELECT)
     .order('created_at', { ascending: false })
     .limit(TRAINING_FETCH_LIMIT);
+
+  if (genre) request = request.eq('genre', genre);
+
+  const { data, error } = await request;
 
   if (error) {
     throw new Error(`トレーニングの取得に失敗しました: ${error.message}`);
@@ -61,20 +68,54 @@ export async function fetchTrainingById(id: string): Promise<Training | null> {
   return flatten(data as unknown as TrainingWithJoin);
 }
 
-/** 絞り込みチップ用: カテゴリーマスタを sort_order 昇順で取得する */
-export async function fetchCategories(): Promise<Category[]> {
+/**
+ * 絞り込みチップ用: カテゴリーマスタを sort_order 昇順で取得する。
+ * genre を渡すとそのジャンルのカテゴリーだけ、省略すると全件返す（管理画面用）。
+ */
+export async function fetchCategories(genre?: GenreCode): Promise<Category[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let request = supabase
     .from('categories')
-    .select('id, name, slug, sort_order')
+    .select('id, genre, name, slug, sort_order')
     .order('sort_order', { ascending: true });
+
+  if (genre) request = request.eq('genre', genre);
+
+  const { data, error } = await request;
 
   if (error) {
     throw new Error(`カテゴリーの取得に失敗しました: ${error.message}`);
   }
 
   return (data ?? []) as Category[];
+}
+
+/**
+ * 入口画面のバッジ用: ジャンルごとの登録件数だけを数える。
+ *
+ * head: true なので行は1件も返さず、Postgres の count だけを受け取る。
+ * 入口では件数しか使わないため、種目本体を取ってきて length を数えない。
+ */
+export async function fetchTrainingCount(genre: GenreCode): Promise<number> {
+  const supabase = await createClient();
+
+  const { count, error } = await supabase
+    .from('trainings')
+    .select('id', { count: 'exact', head: true })
+    .eq('genre', genre);
+
+  if (error) {
+    // head: true はレスポンス本文が無いので、PostgREST がエラーを返しても
+    // message が空文字で届くことがある（例: 列が無い・RLS で弾かれた）。
+    // 「失敗しました: 」だけの無情報なエラーにならないよう補足を足す。
+    const detail =
+      [error.message, error.code].filter(Boolean).join(' / ') ||
+      '詳細不明（件数のみのリクエストなのでエラー本文が返りません）';
+    throw new Error(`トレーニング件数の取得に失敗しました: ${detail}`);
+  }
+
+  return count ?? 0;
 }
 
 /**
@@ -121,15 +162,24 @@ export function filterTrainings(
 /* 管理画面用                                                          */
 /* ------------------------------------------------------------------ */
 
-/** 管理一覧用: 更新日の新しい順で取得する */
-export async function fetchTrainingsForAdmin(): Promise<Training[]> {
+/**
+ * 管理一覧用: 更新日の新しい順で取得する。
+ * genre を渡すとそのジャンルだけ、省略すると全ジャンル（＝「すべて」タブ）。
+ */
+export async function fetchTrainingsForAdmin(
+  genre?: GenreCode,
+): Promise<Training[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let request = supabase
     .from('trainings')
     .select(TRAINING_SELECT)
     .order('updated_at', { ascending: false })
     .limit(TRAINING_FETCH_LIMIT);
+
+  if (genre) request = request.eq('genre', genre);
+
+  const { data, error } = await request;
 
   if (error) {
     throw new Error(`トレーニングの取得に失敗しました: ${error.message}`);
@@ -143,14 +193,23 @@ export type CategoryWithUsage = Category & {
   usageCount: number;
 };
 
-/** カテゴリー管理用: 使用中の種目数つきで取得する（1クエリ） */
-export async function fetchCategoriesWithUsage(): Promise<CategoryWithUsage[]> {
+/**
+ * カテゴリー管理用: 使用中の種目数つきで取得する（1クエリ）。
+ * genre を渡すとそのジャンルのカテゴリーだけ返す。
+ */
+export async function fetchCategoriesWithUsage(
+  genre?: GenreCode,
+): Promise<CategoryWithUsage[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let request = supabase
     .from('categories')
-    .select('id, name, slug, sort_order, training_categories(count)')
+    .select('id, genre, name, slug, sort_order, training_categories(count)')
     .order('sort_order', { ascending: true });
+
+  if (genre) request = request.eq('genre', genre);
+
+  const { data, error } = await request;
 
   if (error) {
     throw new Error(`カテゴリーの取得に失敗しました: ${error.message}`);

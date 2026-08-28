@@ -5,11 +5,14 @@ import type { Metadata } from 'next';
 import {
   AGE_GROUP_LABELS,
   EQUIPMENT_LABELS,
+  GENRE_LABELS,
   PEOPLE_LABELS,
 } from '@/lib/constants';
 import { fetchTrainingById } from '@/lib/queries';
 import { getYouTubeEmbedUrl } from '@/lib/youtube';
+import { BackLink } from '@/components/BackLink';
 import { Checklist } from '@/components/Checklist';
+import { FavoriteButton } from '@/components/FavoriteButton';
 import { IntensityBadge } from '@/components/IntensityBadge';
 import { SafetyNotice } from '@/components/SafetyNotice';
 import { TrainingThumbnail } from '@/components/TrainingThumbnail';
@@ -55,14 +58,18 @@ export default async function TrainingDetailPage({
 
   const embedUrl = getYouTubeEmbedUrl(training.youtube_url);
 
+  // 共有リンクから直接開かれたときの戻り先。
+  // この種目が属するジャンルの一覧へ送る（URL 自体は今までどおり /training/[id]）。
+  const listHref = `/list/${training.genre}`;
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
-      <Link
-        href="/"
+      <BackLink
+        fallbackHref={listHref}
         className="inline-flex min-h-[44px] items-center gap-1 self-start text-sm font-medium text-sky-700 active:text-sky-900"
       >
         <span aria-hidden="true">←</span> もどる
-      </Link>
+      </BackLink>
 
       {/* 動画があれば埋め込み、なければ一覧と同じ3段フォールバックでサムネイル */}
       <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-slate-200">
@@ -86,9 +93,12 @@ export default async function TrainingDetailPage({
       </div>
 
       <div>
-        <h1 className="text-xl font-bold leading-snug text-slate-900">
-          {training.title}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-xl font-bold leading-snug text-slate-900">
+            {training.title}
+          </h1>
+          <FavoriteButton trainingId={training.id} size="lg" />
+        </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <IntensityBadge intensity={training.intensity} size="md" />
@@ -138,10 +148,10 @@ export default async function TrainingDetailPage({
       <SafetyNotice />
 
       <Link
-        href="/"
+        href={listHref}
         className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 active:bg-slate-100"
       >
-        一覧にもどる
+        {GENRE_LABELS[training.genre]}の一覧にもどる
       </Link>
     </div>
   );

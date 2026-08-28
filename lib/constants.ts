@@ -2,13 +2,14 @@
  * アプリ内で使う「選択肢」の唯一の定義場所。
  *
  * ルール:
- * - 強度・道具・対象年齢・推奨人数の表示名は、このファイル以外にハードコードしない。
+ * - ジャンル・強度・道具・対象年齢・推奨人数の表示名は、このファイル以外にハードコードしない。
  * - 画面・スキーマ・検索処理はすべてこのファイルを import して使う。
  * - コード値（low, ladder など）は DB に保存する値。表示名（弱, ラダー など）は画面に出す値。
  *
  * 各グループが持つもの:
  * - `X_CODES`   … コード値の配列（DB の CHECK 制約と一致させること）
  * - `X_LABELS`  … コード値 → 表示名のマップ
+ * - `X_SHORT_LABELS` … コード値 → 短縮表示名のマップ（狭い場所用。ジャンルのみ）
  * - `X_OPTIONS` … フォームで並べる用の { code, label } 配列
  * - `xCodesByKeyword()` … 表示名 → コード値の逆引き（キーワード検索用）
  */
@@ -33,6 +34,70 @@ function createKeywordLookup<T extends string>(
     return codes.filter((code) => normalize(labels[code]).includes(needle));
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* ジャンル GENRE                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * トレーニング全体を分ける最上位の軸。
+ * カテゴリー（categories テーブル）より1段上で、コードで固定する。
+ * 管理画面からの追加・削除はできない。
+ *
+ * ジャンルを増やすときに直す場所（README「ジャンルを増やすには」も参照）:
+ *   1. この GENRE_CODES にコード値を足す
+ *   2. 下の GENRE_LABELS / GENRE_SHORT_LABELS / GENRE_ICONS /
+ *      GENRE_DESCRIPTIONS を埋める（Record 型なので埋め忘れると型エラーになる）
+ *   3. DB の CHECK 制約 trainings_genre_valid / categories_genre_valid を直す
+ *   4. そのジャンルのカテゴリーを1件以上登録する（0件だと種目を登録できない）
+ * 画面側（入口のボタン・タブ・一覧）はこの配列から作るので、追加の改修は不要。
+ */
+export const GENRE_CODES = ['body-play', 'lifting'] as const;
+export type GenreCode = (typeof GENRE_CODES)[number];
+
+/** 見出しなど、広さに余裕がある場所で使う正式な表示名 */
+export const GENRE_LABELS: Record<GenreCode, string> = {
+  'body-play': '体遊びトレーニング',
+  lifting: 'リフティングトレーニング',
+};
+
+/** タブ・バッジなど、幅が狭い場所で使う短縮表示名 */
+export const GENRE_SHORT_LABELS: Record<GenreCode, string> = {
+  'body-play': '体遊び',
+  lifting: 'リフティング',
+};
+
+/** 入口画面のボタンに出すアイコン */
+export const GENRE_ICONS: Record<GenreCode, string> = {
+  'body-play': '🤸',
+  lifting: '⚽',
+};
+
+/** 入口画面のボタンに出す1行説明 */
+export const GENRE_DESCRIPTIONS: Record<GenreCode, string> = {
+  'body-play': '走る・跳ぶ・バランスをとる。体を使った基本の練習',
+  lifting: 'トラップやコントロール。ボールにさわる練習',
+};
+
+export const GENRE_OPTIONS = GENRE_CODES.map((code) => ({
+  code,
+  label: GENRE_LABELS[code],
+  shortLabel: GENRE_SHORT_LABELS[code],
+  icon: GENRE_ICONS[code],
+  description: GENRE_DESCRIPTIONS[code],
+}));
+
+/** 未知の文字列（URL のパラメータなど）がジャンルのコード値かどうかを判定する */
+export function isGenreCode(value: string): value is GenreCode {
+  return (GENRE_CODES as readonly string[]).includes(value);
+}
+
+/**
+ * 既定のジャンル。
+ * ジャンル追加前に登録された種目・カテゴリーはすべてこの値へ寄せてある
+ * （マイグレーション 20260826090000_add_genre.sql の backfill と一致させること）。
+ */
+export const DEFAULT_GENRE: GenreCode = 'body-play';
 
 /* ------------------------------------------------------------------ */
 /* 強度 INTENSITY                                                      */

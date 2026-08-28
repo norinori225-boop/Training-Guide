@@ -16,7 +16,7 @@ export default function NotFound() {
         href="/"
         className="mt-2 inline-flex min-h-[44px] items-center rounded-full bg-sky-600 px-6 text-sm font-bold text-white active:bg-sky-700"
       >
-        一覧にもどる
+        ホームにもどる
       </Link>
     </div>
   );

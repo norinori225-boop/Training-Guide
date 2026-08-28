@@ -24,6 +24,7 @@ export default async function AdminEditTrainingPage({
 async function EditTrainingForm({ id }: { id: string }) {
   if (!UUID_PATTERN.test(id)) notFound();
 
+  // 編集でもジャンルを変えられるので、カテゴリーは全ジャンルぶん渡す
   const [training, categories] = await Promise.all([
     fetchTrainingById(id),
     fetchCategories(),

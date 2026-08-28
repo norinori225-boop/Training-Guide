@@ -4,6 +4,7 @@ import {
   EQUIPMENT_CODES,
   EQUIPMENT_EXCLUSIVE_CODE,
   EQUIPMENT_LABELS,
+  GENRE_CODES,
   INTENSITY_CODES,
   PEOPLE_CODES,
 } from '@/lib/constants';
@@ -46,7 +47,14 @@ export function validateImageFile(file: File): string | null {
 
 /* ---------------- トレーニング ---------------- */
 
+/** 別ジャンルのカテゴリーが混ざっていたときのメッセージ（画面とテストで共用） */
+export const GENRE_CATEGORY_MISMATCH_MESSAGE =
+  '選択したジャンルと異なるカテゴリーが含まれています';
+
 export const trainingSchema = z.object({
+  // フォームの一番上の項目。DB 側に default が無いので必ず送る
+  genre: z.enum(GENRE_CODES, { message: 'ジャンルを選んでください。' }),
+
   title: z
     .string()
     .trim()
@@ -130,6 +138,8 @@ const categorySortOrder = z
   .max(9999, '表示順は9999以下で入力してください。');
 
 export const categoryCreateSchema = z.object({
+  // どのジャンルのカテゴリーとして登録するか。タブの選択が hidden で送られる
+  genre: z.enum(GENRE_CODES, { message: 'ジャンルを選んでください。' }),
   name: categoryName,
   slug: z
     .string()
@@ -143,7 +153,7 @@ export const categoryCreateSchema = z.object({
   sort_order: categorySortOrder,
 });
 
-/** slug は URL・コード用なので編集させない */
+/** slug は URL・コード用、genre は所属の付け替えになるため、どちらも編集させない */
 export const categoryUpdateSchema = z.object({
   id: z.uuid('カテゴリーの指定が正しくありません。'),
   name: categoryName,

@@ -3,8 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/auth';
+import { GENRE_CODES } from '@/lib/constants';
+import type { GenreCode } from '@/lib/types';
 import { createClient } from '@/lib/supabase/server';
 import {
+  GENRE_CATEGORY_MISMATCH_MESSAGE,
   trainingSchema,
   toFieldErrors,
   validateImageFile,
@@ -21,6 +24,7 @@ import {
 /** FormData を素のオブジェクトへ。チェックリストの空文字はここで除去する。 */
 function toRawInput(formData: FormData) {
   return {
+    genre: String(formData.get('genre') ?? ''),
     title: String(formData.get('title') ?? ''),
     short_description: String(formData.get('short_description') ?? ''),
     description: String(formData.get('description') ?? ''),
@@ -37,33 +41,92 @@ function toRawInput(formData: FormData) {
   };
 }
 
-/** 利用者側に即座に反映させる */
-function revalidateTraining(trainingId: string) {
+/**
+ * 利用者側に即座に反映させる。
+ *
+ * 入口（`/`）はジャンルごとの件数を出しているので、種目を足し引きしたら
+ * 一緒に作り直す必要がある。
+ *
+ * ジャンル別一覧は「関係したジャンル」を渡す。編集でジャンルを移した場合は
+ * 変更前と変更後の両方を渡すこと（移動元の一覧にも古い内容が残るため）。
+ * 判別できなかった場合は安全側に倒して全ジャンル流す。
+ */
+function revalidateTraining(
+  trainingId: string,
+  ...genres: (GenreCode | null | undefined)[]
+) {
   revalidatePath('/');
+
+  const targets = new Set(genres.filter((genre): genre is GenreCode => Boolean(genre)));
+  for (const genre of targets.size > 0 ? targets : GENRE_CODES) {
+    revalidatePath(`/list/${genre}`);
+  }
+
   revalidatePath(`/training/${trainingId}`);
 }
 
+type SelectedCategory = { id: string; sort_order: number };
+
 /**
- * 選択されたカテゴリーを、categories.sort_order の昇順で 0 から採番して
- * training_categories に入れ直す（全削除 → 再挿入で置き換える）。
+ * 選択されたカテゴリーを読み込み、保存してよいか検証する。
+ *
+ * 「そのジャンルのカテゴリーだけを送ってくる」のは画面の都合でしかないので、
+ * ここでサーバー側でも突き合わせる（フォームを迂回して直接 POST されても
+ * ジャンル違いの組み合わせが保存されないようにする）。
+ *
+ * 種目の行を作る前に呼ぶこと。あとで弾くと、カテゴリーが1件も付いていない
+ * 種目だけが残ってしまう。
+ */
+async function loadSelectedCategories(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  categoryIds: string[],
+  genre: GenreCode,
+): Promise<{ categories: SelectedCategory[] } | { error: ActionResult }> {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, genre, sort_order')
+    .in('id', categoryIds);
+
+  if (error) {
+    return {
+      error: { ok: false, message: `カテゴリーの取得に失敗しました: ${error.message}` },
+    };
+  }
+
+  const categories = data ?? [];
+
+  if (categories.length !== categoryIds.length) {
+    return {
+      error: {
+        ok: false,
+        fieldErrors: {
+          categoryIds: '選択されたカテゴリーの中に、存在しないものが含まれています。',
+        },
+      },
+    };
+  }
+
+  if (categories.some((category) => category.genre !== genre)) {
+    return {
+      error: {
+        ok: false,
+        fieldErrors: { categoryIds: GENRE_CATEGORY_MISMATCH_MESSAGE },
+      },
+    };
+  }
+
+  return { categories };
+}
+
+/**
+ * training_categories を入れ直す（全削除 → 再挿入で置き換える）。
+ * sort_order は categories.sort_order の昇順で 0 から機械採番する。
  */
 async function replaceTrainingCategories(
   supabase: Awaited<ReturnType<typeof createClient>>,
   trainingId: string,
-  categoryIds: string[],
+  categories: SelectedCategory[],
 ): Promise<string | null> {
-  const { data: categories, error: fetchError } = await supabase
-    .from('categories')
-    .select('id, sort_order')
-    .in('id', categoryIds);
-
-  if (fetchError) {
-    return `カテゴリーの取得に失敗しました: ${fetchError.message}`;
-  }
-  if (!categories || categories.length !== categoryIds.length) {
-    return '選択されたカテゴリーの中に、存在しないものが含まれています。';
-  }
-
   const { error: deleteError } = await supabase
     .from('training_categories')
     .delete()
@@ -95,6 +158,7 @@ async function replaceTrainingCategories(
 /** trainings に書き込む列（カテゴリーと画像は別扱い） */
 function toTrainingRow(input: TrainingInput) {
   return {
+    genre: input.genre,
     title: input.title,
     intensity: input.intensity,
     short_description: input.short_description,
@@ -146,17 +210,30 @@ export async function saveTrainingAction(
   const supabase = await createClient();
   const row = toTrainingRow(parsed.data);
 
+  // ジャンルとカテゴリーの組み合わせは、行を作る前に検証する
+  const selected = await loadSelectedCategories(
+    supabase,
+    parsed.data.categoryIds,
+    parsed.data.genre,
+  );
+  if ('error' in selected) {
+    return selected.error;
+  }
+
   let savedId = trainingId;
   let previousThumbnailUrl: string | null = null;
+  // 編集でジャンルを移したとき、移動元の一覧も作り直すために控えておく
+  let previousGenre: GenreCode | null = null;
 
   if (isUpdate) {
     const { data: existing } = await supabase
       .from('trainings')
-      .select('thumbnail_url')
+      .select('thumbnail_url, genre')
       .eq('id', trainingId)
       .maybeSingle();
 
     previousThumbnailUrl = existing?.thumbnail_url ?? null;
+    previousGenre = (existing?.genre as GenreCode | undefined) ?? null;
 
     const { error } = await supabase
       .from('trainings')
@@ -186,7 +263,7 @@ export async function saveTrainingAction(
   const categoryError = await replaceTrainingCategories(
     supabase,
     savedId,
-    parsed.data.categoryIds,
+    selected.categories,
   );
   if (categoryError) {
     return { ok: false, message: categoryError };
@@ -219,7 +296,8 @@ export async function saveTrainingAction(
     );
   }
 
-  revalidateTraining(savedId);
+  // 変更前と変更後の両方のジャンルの一覧を作り直す
+  revalidateTraining(savedId, parsed.data.genre, previousGenre);
   redirect('/admin');
 }
 
@@ -244,6 +322,15 @@ export async function deleteTrainingAction(
 
   const supabase = await createClient();
 
+  // どの一覧を作り直せばよいか、消える前に確かめておく
+  const { data: existing } = await supabase
+    .from('trainings')
+    .select('genre')
+    .eq('id', trainingId)
+    .maybeSingle();
+
+  const deletedGenre = (existing?.genre as GenreCode | undefined) ?? null;
+
   const { error } = await supabase
     .from('trainings')
     .delete()
@@ -256,6 +343,6 @@ export async function deleteTrainingAction(
   // 画像の後始末はベストエフォート
   await removeTrainingFolderQuietly(supabase, trainingId);
 
-  revalidateTraining(trainingId);
+  revalidateTraining(trainingId, deletedGenre);
   redirect('/admin');
 }

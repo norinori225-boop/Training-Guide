@@ -42,7 +42,7 @@ export async function AdminGuard({ children }: { children: React.ReactNode }) {
             href="/"
             className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-slate-300 bg-white px-6 text-sm font-bold text-slate-700 active:bg-slate-100"
           >
-            一覧にもどる
+            ホームにもどる
           </Link>
         </div>
       </div>
