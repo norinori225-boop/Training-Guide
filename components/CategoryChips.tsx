@@ -4,22 +4,27 @@ import type { Category } from '@/lib/types';
 /**
  * カテゴリー絞り込みチップ（単一選択・横スクロール）。
  * リンクなので JS 無しでも動く。多対多なので「選択したカテゴリーを含む」種目が出る。
+ *
+ * basePath は自分が置かれている一覧の URL（例: /list/body-play）。
+ * ジャンル別一覧に分かれたので、リンク先を固定せず呼び出し側から受け取る。
  */
 export function CategoryChips({
   categories,
   selectedSlug,
   query,
+  basePath,
 }: {
   categories: Category[];
   selectedSlug: string;
   query: string;
+  basePath: string;
 }) {
   const buildHref = (slug: string) => {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
     if (slug) params.set('category', slug);
     const queryString = params.toString();
-    return queryString ? `/?${queryString}` : '/';
+    return queryString ? `${basePath}?${queryString}` : basePath;
   };
 
   const chips = [{ id: 'all', slug: '', name: 'すべて' }, ...categories];

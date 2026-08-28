@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import {
   AGE_GROUP_OPTIONS,
+  DEFAULT_GENRE,
   EQUIPMENT_EXCLUSIVE_CODE,
   EQUIPMENT_LABELS,
   EQUIPMENT_OPTIONS,
+  GENRE_OPTIONS,
   INTENSITY_OPTIONS,
   PEOPLE_OPTIONS,
 } from '@/lib/constants';
@@ -14,6 +16,7 @@ import type {
   AgeGroupCode,
   Category,
   EquipmentCode,
+  GenreCode,
   Training,
 } from '@/lib/types';
 import { ACCEPTED_IMAGE_TYPES, type ActionResult } from '@/lib/schemas';
@@ -41,17 +44,36 @@ const legendClass =
 const optionClass =
   'flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3';
 
-/** 新規登録と編集で共用するフォーム */
+/**
+ * 新規登録と編集で共用するフォーム。
+ *
+ * categories には全ジャンルのカテゴリーを渡すこと。
+ * ジャンルタブを切り替えたときに、サーバーへ取りに行かずその場で
+ * 選択肢を差し替えられるようにするため。
+ */
 export function TrainingForm({
   categories,
   training,
+  initialGenre,
 }: {
+  /** 全ジャンルぶん。表示は選択中のジャンルで絞り込む */
   categories: Category[];
   training?: Training;
+  /** 新規登録で、管理一覧の絞り込みジャンルを引き継ぎたいときに渡す */
+  initialGenre?: GenreCode;
 }) {
   const [state, formAction, isPending] = useActionState<ActionResult, FormData>(
     saveTrainingAction,
     INITIAL_STATE,
+  );
+
+  const [genre, setGenre] = useState<GenreCode>(
+    training?.genre ?? initialGenre ?? DEFAULT_GENRE,
+  );
+
+  // カテゴリーはジャンル切り替えでクリアするので、非制御ではなく状態で持つ
+  const [categoryIds, setCategoryIds] = useState<string[]>(
+    training?.categories.map((category) => category.id) ?? [],
   );
 
   const [equipment, setEquipment] = useState<EquipmentCode[]>(
@@ -85,6 +107,35 @@ export function TrainingForm({
     });
   };
 
+  // 表示するのは選択中のジャンルのカテゴリーだけ
+  const visibleCategories = categories.filter(
+    (category) => category.genre === genre,
+  );
+
+  /**
+   * ジャンルを切り替える。
+   * カテゴリーはジャンルに紐づくので、選び直しになることを先に伝えてから消す。
+   */
+  const changeGenre = (next: GenreCode) => {
+    if (next === genre) return;
+
+    if (categoryIds.length > 0) {
+      const ok = window.confirm('カテゴリーの選択が外れます。よろしいですか？');
+      if (!ok) return;
+    }
+
+    setGenre(next);
+    setCategoryIds([]);
+  };
+
+  const toggleCategory = (id: string) => {
+    setCategoryIds((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
+    );
+  };
+
   const toggleAgeGroup = (code: AgeGroupCode) => {
     setAgeGroups((current) =>
       current.includes(code)
@@ -98,6 +149,36 @@ export function TrainingForm({
       {training && <input type="hidden" name="id" value={training.id} />}
 
       <ErrorSummary message={state.message} fieldErrors={state.fieldErrors} />
+
+      <fieldset>
+        <legend className={legendClass}>ジャンル{requiredBadge}</legend>
+        <p className="mt-1 text-xs text-slate-500">
+          切り替えると、下のカテゴリーの選択肢が入れ替わります。
+        </p>
+        <div className="mt-2 flex gap-2">
+          {GENRE_OPTIONS.map((option) => (
+            <label
+              key={option.code}
+              className={`flex min-h-[44px] flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border px-3 text-sm font-bold transition ${
+                genre === option.code
+                  ? 'border-sky-600 bg-sky-600 text-white'
+                  : 'border-slate-300 bg-white text-slate-700 active:bg-slate-100'
+              }`}
+            >
+              <input
+                type="radio"
+                name="genre"
+                value={option.code}
+                checked={genre === option.code}
+                onChange={() => changeGenre(option.code)}
+                className="sr-only"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
+        <FieldError message={errors.genre} />
+      </fieldset>
 
       <div>
         <FieldLabel htmlFor="title" required>
@@ -116,22 +197,40 @@ export function TrainingForm({
 
       <fieldset>
         <legend className={legendClass}>カテゴリー{requiredBadge}</legend>
-        <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
-          {categories.map((category) => (
-            <label key={category.id} className={optionClass}>
-              <input
-                type="checkbox"
-                name="categoryIds"
-                value={category.id}
-                defaultChecked={training?.categories.some(
-                  (c) => c.id === category.id,
-                )}
-                className="h-5 w-5 accent-sky-600"
-              />
-              <span className="text-sm text-slate-800">{category.name}</span>
-            </label>
-          ))}
-        </div>
+
+        {visibleCategories.length === 0 ? (
+          // このジャンルにカテゴリーが無いと、種目は1件も登録できない
+          <div className="mt-2 rounded-lg border border-dashed border-amber-400 bg-amber-50 px-4 py-4 text-center">
+            <p className="text-sm text-amber-900">
+              このジャンルにはカテゴリーがまだありません。
+              <br />
+              先にカテゴリーを登録してください。
+            </p>
+            <Link
+              href={`/admin/categories?genre=${genre}`}
+              className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-full border border-amber-500 bg-white px-5 text-sm font-bold text-amber-900 active:bg-amber-100"
+            >
+              カテゴリー管理をひらく
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-2 grid grid-cols-1 gap-1 sm:grid-cols-2">
+            {visibleCategories.map((category) => (
+              <label key={category.id} className={optionClass}>
+                <input
+                  type="checkbox"
+                  name="categoryIds"
+                  value={category.id}
+                  checked={categoryIds.includes(category.id)}
+                  onChange={() => toggleCategory(category.id)}
+                  className="h-5 w-5 accent-sky-600"
+                />
+                <span className="text-sm text-slate-800">{category.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
         <FieldError message={errors.categoryIds} />
       </fieldset>
 

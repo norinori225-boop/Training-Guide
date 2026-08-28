@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { EQUIPMENT_LABELS } from '@/lib/constants';
 import type { Training } from '@/lib/types';
+import { FavoriteButton } from '@/components/FavoriteButton';
+import { GenreBadge } from '@/components/GenreBadge';
 import { IntensityBadge } from '@/components/IntensityBadge';
 import { TrainingThumbnail } from '@/components/TrainingThumbnail';
 
@@ -21,15 +23,21 @@ function splitOverflow<T>(items: T[]) {
 export function TrainingCard({
   training,
   priority = false,
+  showGenre = false,
 }: {
   training: Training;
   priority?: boolean;
+  /** ジャンルが混ざる画面（お気に入り）でだけ true にする */
+  showGenre?: boolean;
 }) {
   const categories = splitOverflow(training.categories);
   const equipment = splitOverflow(training.equipment);
 
   return (
-    <li>
+    // ハートはリンクの「中」に置かない。<a> の中に <button> を入れると
+    // HTML として不正で、タップの扱いもブラウザ任せになるため、
+    // 兄弟として重ねて置く（li を relative にして絶対配置）。
+    <li className="relative">
       <Link
         href={`/training/${training.id}`}
         className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition active:bg-slate-50 sm:hover:border-slate-300 sm:hover:shadow"
@@ -48,7 +56,10 @@ export function TrainingCard({
             <h2 className="text-base font-bold leading-snug text-slate-900">
               {training.title}
             </h2>
-            <IntensityBadge intensity={training.intensity} />
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <IntensityBadge intensity={training.intensity} />
+              {showGenre && <GenreBadge genre={training.genre} />}
+            </div>
           </div>
 
           {/* カテゴリー: 先頭2件＋「＋N」。順序は categories.sort_order 昇順 */}
@@ -91,6 +102,10 @@ export function TrainingCard({
           </ul>
         </div>
       </Link>
+
+      <div className="absolute right-2 top-2">
+        <FavoriteButton trainingId={training.id} />
+      </div>
     </li>
   );
 }

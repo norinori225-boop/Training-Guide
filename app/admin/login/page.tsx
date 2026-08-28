@@ -40,7 +40,7 @@ export default async function AdminLoginPage() {
         href="/"
         className="inline-flex min-h-[44px] items-center justify-center text-sm font-medium text-sky-700 active:text-sky-900"
       >
-        ← 一覧にもどる
+        ← ホームにもどる
       </Link>
     </div>
   );

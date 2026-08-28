@@ -3,6 +3,7 @@
  * 選択肢のコード値は lib/constants.ts が唯一の定義元なので、ここでは再エクスポートするだけ。
  */
 import type {
+  GenreCode,
   IntensityCode,
   EquipmentCode,
   AgeGroupCode,
@@ -10,6 +11,7 @@ import type {
 } from '@/lib/constants';
 
 export type {
+  GenreCode,
   IntensityCode,
   EquipmentCode,
   AgeGroupCode,
@@ -19,6 +21,8 @@ export type {
 /** categories テーブル */
 export type Category = {
   id: string;
+  /** 所属ジャンル。name / slug の一意性はジャンル単位 */
+  genre: GenreCode;
   name: string;
   slug: string;
   sort_order: number;
@@ -27,6 +31,8 @@ export type Category = {
 /** trainings テーブル（DB から返ってくる素の形） */
 export type TrainingRow = {
   id: string;
+  /** 最上位の分類。DB 側に default は無いので、保存時は必ず明示する */
+  genre: GenreCode;
   title: string;
   intensity: IntensityCode;
   short_description: string;

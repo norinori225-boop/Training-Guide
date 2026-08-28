@@ -20,10 +20,12 @@ export default function Error({
         😵
       </p>
       <h1 className="text-lg font-bold text-slate-900">
-        トレーニングを読み込めませんでした
+        お気に入りを読み込めませんでした
       </h1>
       <p className="text-sm leading-relaxed text-slate-600">
         通信状態を確認して、もう一度お試しください。
+        <br />
+        保存したお気に入りはこの端末に残っているので、消えてはいません。
       </p>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <button
