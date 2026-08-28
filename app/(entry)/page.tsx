@@ -9,7 +9,7 @@ import { fetchTrainingCount } from '@/lib/queries';
 export const metadata: Metadata = {
   title: 'ODORIKOトレーニング',
   description:
-    '親子でできる、すばやく動くための練習メニュー集。ジャンルを選んで種目を探せます。',
+    '体遊び、リフティング技メニュー集。ジャンルを選んで種目を探せます。',
 };
 
 // 件数とカテゴリーは管理画面の変更をすぐ反映したいので、常に動的レンダリングにする。
@@ -40,7 +40,7 @@ export default async function HomePage() {
           ODORIKOトレーニング
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          親子でできる、すばやく動くための練習メニュー集
+          体遊び、リフティング技メニュー集
         </p>
       </header>
 
