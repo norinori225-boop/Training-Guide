@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo } from 'react';
 import { CardSkeleton } from '@/components/Skeletons';
+import { StarIcon } from '@/components/StarIcon';
 import { TrainingCard } from '@/components/TrainingCard';
 import { GENRE_CODES, GENRE_LABELS } from '@/lib/constants';
 import { pruneFavorites, useFavorites } from '@/lib/favorites';
@@ -74,13 +75,13 @@ export function FavoritesList({ trainings }: { trainings: Training[] }) {
 function EmptyState() {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-      <p className="text-4xl" aria-hidden="true">
-        ⭐
+      <p className="flex justify-center text-4xl text-amber-500" aria-hidden="true">
+        <StarIcon filled />
       </p>
       <p className="mt-3 text-sm leading-relaxed text-slate-600">
         まだお気に入りがありません。
         <br />
-        気になる種目のハートを押すとここに入ります。
+        気になる種目の☆を押すとここに入ります。
       </p>
 
       <div className="mt-5 flex flex-col gap-2">

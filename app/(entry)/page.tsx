@@ -2,11 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FavoriteCount } from '@/components/FavoriteCount';
 import { SafetyNotice } from '@/components/SafetyNotice';
+import { StarIcon } from '@/components/StarIcon';
 import { GENRE_CODES, GENRE_OPTIONS } from '@/lib/constants';
 import { fetchTrainingCount } from '@/lib/queries';
 
 export const metadata: Metadata = {
-  title: 'アジリティートレーニング',
+  title: 'ODORIKOトレーニング',
   description:
     '親子でできる、すばやく動くための練習メニュー集。ジャンルを選んで種目を探せます。',
 };
@@ -36,7 +37,7 @@ export default async function HomePage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-7 px-4 py-6">
       <header className="text-center">
         <h1 className="text-2xl font-bold text-slate-900">
-          アジリティートレーニング
+          ODORIKOトレーニング
         </h1>
         <p className="mt-1.5 text-sm text-slate-600">
           親子でできる、すばやく動くための練習メニュー集
@@ -60,7 +61,12 @@ export default async function HomePage() {
           <li>
             <MenuButton
               href="/favorites"
-              icon="⭐"
+              // 絵文字のジャンルアイコンと並ぶので、星にも色を付ける
+              icon={
+                <span className="text-amber-500">
+                  <StarIcon filled />
+                </span>
+              }
               title="お気に入り"
               description="あとでやりたい種目をまとめて見る"
               // 件数は端末内にしかないので、サーバーでは数えずクライアントで出す
@@ -123,7 +129,7 @@ function MenuButton({
   countSlot,
 }: {
   href: string;
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   description: string;
   /** サーバーで数えた件数。省略すると件数バッジを出さない */
