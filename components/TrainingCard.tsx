@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { EQUIPMENT_LABELS } from '@/lib/constants';
+import { equipmentLabels } from '@/lib/constants';
 import type { Training } from '@/lib/types';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import { GenreBadge } from '@/components/GenreBadge';
@@ -31,10 +31,11 @@ export function TrainingCard({
   showGenre?: boolean;
 }) {
   const categories = splitOverflow(training.categories);
-  const equipment = splitOverflow(training.equipment);
+  // 表示名は equipmentLabels() が唯一の作り手。'other' はここで道具名に化ける
+  const equipment = splitOverflow(equipmentLabels(training));
 
   return (
-    // ハートはリンクの「中」に置かない。<a> の中に <button> を入れると
+    // 星ボタンはリンクの「中」に置かない。<a> の中に <button> を入れると
     // HTML として不正で、タップの扱いもブラウザ任せになるため、
     // 兄弟として重ねて置く（li を relative にして絶対配置）。
     <li className="relative">
@@ -86,12 +87,12 @@ export function TrainingCard({
           {/* 道具: 先頭2件＋「＋N」（小さめのラベル） */}
           <ul className="mt-3 flex flex-wrap items-center gap-1.5">
             <li className="text-[11px] text-slate-500">道具</li>
-            {equipment.visible.map((code) => (
+            {equipment.visible.map((label) => (
               <li
-                key={code}
+                key={label}
                 className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600"
               >
-                {EQUIPMENT_LABELS[code]}
+                {label}
               </li>
             ))}
             {equipment.overflow > 0 && (

@@ -4,7 +4,7 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import {
   AGE_GROUP_LABELS,
-  EQUIPMENT_LABELS,
+  equipmentLabels,
   GENRE_LABELS,
   PEOPLE_LABELS,
 } from '@/lib/constants';
@@ -116,7 +116,7 @@ export default async function TrainingDetailPage({
 
       <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-3">
         <InfoCell icon="🎽" label="必要な道具">
-          <TagList items={training.equipment.map((code) => EQUIPMENT_LABELS[code])} />
+          <TagList items={equipmentLabels(training)} />
         </InfoCell>
         <InfoCell icon="👦" label="対象年齢の目安">
           <TagList items={training.age_groups.map((code) => AGE_GROUP_LABELS[code])} />

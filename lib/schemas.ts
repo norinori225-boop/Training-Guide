@@ -4,8 +4,10 @@ import {
   EQUIPMENT_CODES,
   EQUIPMENT_EXCLUSIVE_CODE,
   EQUIPMENT_LABELS,
+  EQUIPMENT_OTHER_CODE,
   GENRE_CODES,
   INTENSITY_CODES,
+  MAX_EQUIPMENT_OTHER_LENGTH,
   PEOPLE_CODES,
 } from '@/lib/constants';
 import { isValidYouTubeUrl } from '@/lib/youtube';
@@ -51,7 +53,11 @@ export function validateImageFile(file: File): string | null {
 export const GENRE_CATEGORY_MISMATCH_MESSAGE =
   '選択したジャンルと異なるカテゴリーが含まれています';
 
-export const trainingSchema = z.object({
+/**
+ * 項目ごとのルール。項目をまたぐ検査（equipment と equipment_other の整合）は
+ * これを土台にした trainingSchema の側で行う。
+ */
+const trainingFields = z.object({
   // フォームの一番上の項目。DB 側に default が無いので必ず送る
   genre: z.enum(GENRE_CODES, { message: 'ジャンルを選んでください。' }),
 
@@ -88,6 +94,14 @@ export const trainingSchema = z.object({
       `「${EQUIPMENT_LABELS[EQUIPMENT_EXCLUSIVE_CODE]}」は他の道具と同時に選べません。`,
     ),
 
+  // 「その他」の道具名。ここでは形だけ整え（空文字は null に寄せる）、
+  // equipment との整合（必須かどうか）はオブジェクト全体の superRefine で見る。
+  equipment_other: z
+    .string()
+    .trim()
+    .nullable()
+    .transform((value) => (value ? value : null)),
+
   age_groups: z
     .array(z.enum(AGE_GROUP_CODES, { message: '対象年齢の指定が正しくありません。' }))
     .min(1, '対象年齢の目安を1つ以上選んでください。'),
@@ -120,6 +134,45 @@ export const trainingSchema = z.object({
     )
     .transform((value) => (value ? value : null)),
 });
+
+export const trainingSchema = trainingFields
+  /**
+   * 「その他」を選んだときだけ道具名を必須にする。
+   * 1項目だけでは決められない（equipment に依存する）ので、
+   * オブジェクト全体が揃ってから見る。
+   */
+  .superRefine((value, ctx) => {
+    if (!value.equipment.includes(EQUIPMENT_OTHER_CODE)) return;
+
+    if (value.equipment_other === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['equipment_other'],
+        message: 'その他の道具の名前を入力してください',
+      });
+      return;
+    }
+
+    if (value.equipment_other.length > MAX_EQUIPMENT_OTHER_LENGTH) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['equipment_other'],
+        message: `${MAX_EQUIPMENT_OTHER_LENGTH}文字以内で入力してください`,
+      });
+    }
+  })
+  /**
+   * 「その他」のチェックを外したら道具名は捨てる。
+   * 画面側でも入力欄を消したときにクリアしているが、直接 POST された場合や
+   * 「道具なし」で他が外れた場合もここで確実に null になる
+   * （DB の CHECK 制約 trainings_equipment_other_consistent と一致させる）。
+   */
+  .transform((value) => ({
+    ...value,
+    equipment_other: value.equipment.includes(EQUIPMENT_OTHER_CODE)
+      ? value.equipment_other
+      : null,
+  }));
 
 export type TrainingInput = z.infer<typeof trainingSchema>;
 

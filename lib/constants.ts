@@ -157,6 +157,12 @@ export const EQUIPMENT_LABELS: Record<EquipmentCode, string> = {
 /** 「道具なし」は他の道具と同時に選べない排他コード */
 export const EQUIPMENT_EXCLUSIVE_CODE: EquipmentCode = 'none';
 
+/** これを選んだときだけ、道具名を自由入力できる（trainings.equipment_other） */
+export const EQUIPMENT_OTHER_CODE: EquipmentCode = 'other';
+
+/** 自由入力できる道具名の文字数上限（DB の CHECK 制約と一致させること） */
+export const MAX_EQUIPMENT_OTHER_LENGTH = 30;
+
 export const EQUIPMENT_OPTIONS = EQUIPMENT_CODES.map((code) => ({
   code,
   label: EQUIPMENT_LABELS[code],
@@ -171,6 +177,27 @@ export const equipmentCodesByKeyword = createKeywordLookup(
   EQUIPMENT_CODES,
   EQUIPMENT_LABELS,
 );
+
+/**
+ * 道具の表示名を作る唯一の関数。一覧カードも詳細ページもこれを使う。
+ *
+ * 'other' だけは「その他」ではなく、管理画面で入力された道具名
+ * （equipment_other）を出す。表示名を出す場所が増えてもここだけ直せば済むよう、
+ * EQUIPMENT_LABELS を画面から直接引かないこと。
+ *
+ * equipment_other が空の場合は「その他」に戻す。DB の CHECK 制約
+ * （trainings_equipment_other_consistent）があるので通常は起きないが、
+ * 表示が消えるより「その他」と出たほうがまし。
+ */
+export function equipmentLabels(training: {
+  equipment: readonly EquipmentCode[];
+  equipment_other: string | null;
+}): string[] {
+  return training.equipment.map((code) => {
+    if (code !== EQUIPMENT_OTHER_CODE) return EQUIPMENT_LABELS[code];
+    return training.equipment_other?.trim() || EQUIPMENT_LABELS[code];
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /* 対象年齢 AGE_GROUPS                                                 */

@@ -1,6 +1,6 @@
-# アジリティートレーニング共有アプリ
+# ODORIKOトレーニング（トレーニングHowtoアプリ）
 
-親子でできるアジリティートレーニングを紹介・共有するアプリです。
+親子でできる体遊び・リフティングのトレーニングを紹介・共有するアプリです。
 
 - **みんな**: ログイン不要で閲覧（入口でジャンルを選ぶ → 一覧・カテゴリー絞り込み・キーワード検索 → 詳細・チェックリスト）
 - **管理者**: ログインするとトレーニングとカテゴリーを追加・編集・削除できる
@@ -57,7 +57,7 @@ npx supabase db push
 
 適用後、Table Editor に `categories`（6件）/ `trainings`（8件）/ `training_categories` が見えれば成功です。
 
-> `supabase/migrations/` にはこのあと **`20260826090000_add_genre.sql`（ジャンル追加）** が入っています。ファイル名の日付順に適用してください。詳しい手順と検証SQLは[ジャンル追加の適用手順（STEP 7-1）](#ジャンル追加の適用手順step-7-1)にあります。
+> `supabase/migrations/` にはこのあと **`20260826090000_add_genre.sql`（ジャンル追加）**、**`20260828090000_add_equipment_other.sql`（その他の道具名）** が入っています。ファイル名の日付順に適用してください。詳しい手順と検証SQLは[ジャンル追加の適用手順（STEP 7-1）](#ジャンル追加の適用手順step-7-1)と[その他の道具名の適用手順（修正2 その1）](#その他の道具名の適用手順修正2-その1)にあります。
 
 ### 5. 環境変数を設定する
 
@@ -214,6 +214,7 @@ Supabase 側で追加設定は不要です（anon キーはドメインを問わ
 
 - カテゴリーは**多対多**（`training_categories`）。「主カテゴリー」という概念は持ちません。`sort_order` は保存時に `categories.sort_order` の昇順で 0 から機械採番します
 - `checklist` は `text[]` カラム。件数上限（20件）と文字数はアプリ側（Zod）で検証します
+- `equipment` は `text[]` のコード値。**`'other'` を選んだときだけ** `equipment_other`（1〜30文字）に道具名が入り、選んでいなければ必ず `null`。この対応は DB の CHECK 制約で担保しています
 - 一覧は種目数によらず2クエリ固定（カテゴリーを join でまとめて取得し、N+1 にしません）
 
 ### お気に入り（端末内保存）
@@ -361,6 +362,146 @@ where conrelid = 'public.categories'::regclass and contype = 'u';
 ### 適用したあとの注意
 
 `genre` に default が無いので、**管理画面の新規登録フォームがジャンルを送るようになるまで、種目とカテゴリーの新規登録は not null 違反で失敗します**（閲覧・編集・削除は今までどおり動きます）。フォーム側の対応は次のステップです。
+
+---
+
+## その他の道具名の適用手順（修正2 その1）
+
+`supabase/migrations/20260828090000_add_equipment_other.sql` は、必要な道具の【その他】に**道具名を自由入力できるようにする**ためのマイグレーションです。道具のコード値（`none` / `ladder` / `cone` / `ball` / `other`）の仕組みは変えません。
+
+このファイルがやること:
+
+1. `trainings.equipment_other`（text・null 許可）を追加
+2. **既存データの backfill**（制約を張る前に必ず実行）
+   - `equipment` に `'other'` を含むのに名前が無い行 → 仮の名前 `その他の道具` を入れる
+   - `'other'` を含まないのに名前が残っている行 → `null` に戻す（再実行のための保険。初回では発生しません）
+3. 制約を2本追加
+   - `trainings_equipment_other_length` … null でなければ前後の空白を除いて1〜30文字
+   - `trainings_equipment_other_consistent` … `'other'` を選んだときだけ値が入る
+4. 適用結果の確認（想定と違えば `raise exception` で止まる）
+
+**backfill を先にやる理由**: すでに `'other'` を含む種目があると、整合性チェックを付けた瞬間に violation で失敗します。仮の名前を入れて制約を満たす状態にしてから張ります。仮の名前はあとから管理画面で正しい道具名に直す前提の暫定値です。
+
+**RLS の変更は不要です。** 既存ポリシーは `select` が `using (true)`、書き込みが `public.is_admin()` だけで、列を一切参照していません。`grant` もテーブル単位なので、新しい列 `equipment_other` にもそのまま効きます。
+
+### 適用のしかた
+
+1. Supabase ダッシュボード → **SQL Editor** → **New query**
+2. `supabase/migrations/20260828090000_add_equipment_other.sql` の中身を**全部**コピーして貼り付け → **Run**
+3. 成功すると `Success. No rows returned` と表示され、Results 下の **Notices** に「equipment_other を追加しました。'other' を含む種目 N 件 …」と出ます
+
+途中でエラーになった場合は、直して**そのまま再実行して構いません**（何度実行しても同じ結果になるように書いてあります）。
+
+### 検証SQL
+
+適用後、SQL Editor に貼って確認してください。
+
+#### 検証ア: `'other'` と `equipment_other` の対応が取れているか（いちばん大事）
+
+```sql
+select
+  count(*) filter (where 'other' = any(equipment))            as with_other,
+  count(*) filter (where equipment_other is not null)         as with_name,
+  count(*) filter (where equipment_other = 'その他の道具')     as placeholder,
+  count(*) filter (
+    where ('other' = any(equipment)) <> (equipment_other is not null)
+  )                                                            as ng
+from public.trainings;
+```
+
+→ `with_other` と `with_name` が**同じ数**、`ng` が **`0`** なら成功です。`placeholder` は仮の名前のまま残っている件数なので、管理画面から正しい道具名に直していってください。
+
+#### 検証イ: 行ごとの中身を目で見る
+
+```sql
+select id, title, equipment, equipment_other
+from public.trainings
+where 'other' = any(equipment) or equipment_other is not null
+order by title;
+```
+
+→ `equipment` に `other` が入っている行だけが並び、すべて `equipment_other` に値が入っていること。
+
+#### 検証ウ: 列とコメントができているか
+
+```sql
+select
+  column_name, data_type, is_nullable,
+  col_description('public.trainings'::regclass, ordinal_position) as comment
+from information_schema.columns
+where table_schema = 'public'
+  and table_name   = 'trainings'
+  and column_name  = 'equipment_other';
+```
+
+→ `text` / `YES`（null 許可）/ コメント「道具に 'other' を選んだときの自由入力欄。…」の1行。
+
+#### 検証エ: 制約が2本とも付いているか
+
+```sql
+select conname, pg_get_constraintdef(oid)
+from pg_constraint
+where conrelid = 'public.trainings'::regclass
+  and conname like 'trainings_equipment_other%'
+order by conname;
+```
+
+→ `trainings_equipment_other_consistent` と `trainings_equipment_other_length` の **2行**。
+
+#### 検証オ: 制約が実際に効いているか（4パターンとも失敗するのが正解）
+
+いずれも `new row ... violates check constraint` で弾かれれば成功です。**`rollback` まで必ず実行してください**（テスト行を残さないため）。
+
+```sql
+-- ア) 'other' を含むのに名前が無い → trainings_equipment_other_consistent 違反
+begin;
+update public.trainings
+set equipment = array['other']::text[], equipment_other = null
+where id = (select id from public.trainings limit 1);
+rollback;
+```
+
+```sql
+-- イ) 'other' を含まないのに名前がある → trainings_equipment_other_consistent 違反
+begin;
+update public.trainings
+set equipment = array['ladder']::text[], equipment_other = 'なわとび'
+where id = (select id from public.trainings limit 1);
+rollback;
+```
+
+```sql
+-- ウ) 空白だけ → trainings_equipment_other_length 違反
+begin;
+update public.trainings
+set equipment = array['other']::text[], equipment_other = '   '
+where id = (select id from public.trainings limit 1);
+rollback;
+```
+
+```sql
+-- エ) 31文字 → trainings_equipment_other_length 違反
+begin;
+update public.trainings
+set equipment = array['other']::text[], equipment_other = repeat('あ', 31)
+where id = (select id from public.trainings limit 1);
+rollback;
+```
+
+正常系（30文字ちょうど）が通ることも確認しておくと確実です。
+
+```sql
+begin;
+update public.trainings
+set equipment = array['other']::text[], equipment_other = repeat('あ', 30)
+where id = (select id from public.trainings limit 1);
+-- ここでエラーが出なければ成功
+rollback;
+```
+
+### 適用したあとの注意
+
+アプリ側（バリデーション・管理フォーム・表示・検索）はまだ `equipment_other` に対応していません。**この SQL を適用しただけの状態では、管理画面から道具に「その他」を選んで保存すると、`trainings_equipment_other_consistent` 違反で失敗します**（「その他」を使わない種目の登録・編集は今までどおり動きます）。アプリ側の対応は次のステップ（修正2 その2）です。
 
 ---
 

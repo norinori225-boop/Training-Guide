@@ -38,6 +38,12 @@ export type TrainingRow = {
   short_description: string;
   description: string;
   equipment: EquipmentCode[];
+  /**
+   * 道具に 'other' を選んだときの自由入力欄（1〜30文字）。
+   * 'other' を含むときだけ値が入り、含まないときは必ず null（DB の CHECK で担保）。
+   * 表示・検索では 'other' の代わりにこの文字列を使う。
+   */
+  equipment_other: string | null;
   age_groups: AgeGroupCode[];
   people: PeopleCode;
   checklist: string[];

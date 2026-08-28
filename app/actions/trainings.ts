@@ -31,6 +31,9 @@ function toRawInput(formData: FormData) {
     intensity: String(formData.get('intensity') ?? ''),
     categoryIds: formData.getAll('categoryIds').map(String),
     equipment: formData.getAll('equipment').map(String),
+    // 「その他」が未チェックのときは入力欄ごと消えていて送られてこない。
+    // その場合は空文字 → スキーマ側で null になる。
+    equipment_other: String(formData.get('equipment_other') ?? ''),
     age_groups: formData.getAll('age_groups').map(String),
     people: String(formData.get('people') ?? ''),
     checklist: formData
@@ -164,6 +167,7 @@ function toTrainingRow(input: TrainingInput) {
     short_description: input.short_description,
     description: input.description,
     equipment: input.equipment,
+    equipment_other: input.equipment_other,
     age_groups: input.age_groups,
     people: input.people,
     checklist: input.checklist,

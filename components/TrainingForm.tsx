@@ -8,8 +8,10 @@ import {
   EQUIPMENT_EXCLUSIVE_CODE,
   EQUIPMENT_LABELS,
   EQUIPMENT_OPTIONS,
+  EQUIPMENT_OTHER_CODE,
   GENRE_OPTIONS,
   INTENSITY_OPTIONS,
+  MAX_EQUIPMENT_OTHER_LENGTH,
   PEOPLE_OPTIONS,
 } from '@/lib/constants';
 import type {
@@ -43,6 +45,30 @@ const legendClass =
 
 const optionClass =
   'flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3';
+
+/**
+ * 道具のチェックを1つ入れ替えた結果を返す。
+ *
+ * 「道具なし」は排他。選ぶと他が全部外れ、他を選ぶと「道具なし」が外れる。
+ * 「その他」の入力欄を消すかどうかは戻り値を見て呼び出し側が決めるので、
+ * 状態を直接いじらない純粋な関数にしてある。
+ */
+function nextEquipment(
+  current: EquipmentCode[],
+  code: EquipmentCode,
+): EquipmentCode[] {
+  if (code === EQUIPMENT_EXCLUSIVE_CODE) {
+    return current.includes(code) ? [] : [code];
+  }
+
+  const withoutExclusive = current.filter(
+    (value) => value !== EQUIPMENT_EXCLUSIVE_CODE,
+  );
+
+  return withoutExclusive.includes(code)
+    ? withoutExclusive.filter((value) => value !== code)
+    : [...withoutExclusive, code];
+}
 
 /**
  * 新規登録と編集で共用するフォーム。
@@ -79,6 +105,10 @@ export function TrainingForm({
   const [equipment, setEquipment] = useState<EquipmentCode[]>(
     training?.equipment ?? [],
   );
+  // 「その他」の道具名。編集時は保存済みの値が初期表示される
+  const [equipmentOther, setEquipmentOther] = useState(
+    training?.equipment_other ?? '',
+  );
   const [ageGroups, setAgeGroups] = useState<AgeGroupCode[]>(
     training?.age_groups ?? [],
   );
@@ -90,22 +120,19 @@ export function TrainingForm({
   const errors = state.fieldErrors ?? {};
   const embedUrl = getYouTubeEmbedUrl(youtubeUrl);
 
-  /** 「道具なし」は排他。選ぶと他が外れ、他を選ぶと「道具なし」が外れる。 */
   const toggleEquipment = (code: EquipmentCode) => {
-    setEquipment((current) => {
-      if (code === EQUIPMENT_EXCLUSIVE_CODE) {
-        return current.includes(code) ? [] : [code];
-      }
+    const next = nextEquipment(equipment, code);
+    setEquipment(next);
 
-      const withoutExclusive = current.filter(
-        (value) => value !== EQUIPMENT_EXCLUSIVE_CODE,
-      );
-
-      return withoutExclusive.includes(code)
-        ? withoutExclusive.filter((value) => value !== code)
-        : [...withoutExclusive, code];
-    });
+    // 「その他」が外れたら道具名も捨てる。
+    // 「その他」を直接外した場合だけでなく、「道具なし」を選んで
+    // まとめて外れた場合もここで一緒に消える。
+    if (!next.includes(EQUIPMENT_OTHER_CODE)) {
+      setEquipmentOther('');
+    }
   };
+
+  const showEquipmentOther = equipment.includes(EQUIPMENT_OTHER_CODE);
 
   // 表示するのは選択中のジャンルのカテゴリーだけ
   const visibleCategories = categories.filter(
@@ -307,6 +334,30 @@ export function TrainingForm({
           ))}
         </div>
         <FieldError message={errors.equipment} />
+
+        {/* 「その他」にチェックが入っているときだけ出す。
+            外すと unmount されるので、FormData にも送られない。 */}
+        {showEquipmentOther && (
+          <div className="mt-2">
+            <FieldLabel htmlFor="equipment_other" required>
+              その他の道具の名前
+            </FieldLabel>
+            <input
+              id="equipment_other"
+              name="equipment_other"
+              type="text"
+              maxLength={MAX_EQUIPMENT_OTHER_LENGTH}
+              placeholder="例: なわとび・フープ"
+              value={equipmentOther}
+              onChange={(event) => setEquipmentOther(event.target.value)}
+              className={`mt-1 ${inputClass}`}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              複数ある場合は「・」で区切って書いてください
+            </p>
+            <FieldError message={errors.equipment_other} />
+          </div>
+        )}
       </fieldset>
 
       <fieldset>
