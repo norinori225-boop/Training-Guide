@@ -5,12 +5,12 @@ const LOGIN_PATH = '/admin/login';
 
 export async function middleware(request: NextRequest) {
   // セッション（アクセストークン）を更新する
-  const { response, user } = await updateSession(request);
+  const { response, isLoggedIn } = await updateSession(request);
 
   const { pathname } = request.nextUrl;
   const needsAuth = pathname.startsWith('/admin') && pathname !== LOGIN_PATH;
 
-  if (needsAuth && !user) {
+  if (needsAuth && !isLoggedIn) {
     const url = request.nextUrl.clone();
     url.pathname = LOGIN_PATH;
     url.search = '';

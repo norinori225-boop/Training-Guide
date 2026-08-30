@@ -1,6 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import type { User } from '@supabase/supabase-js';
 
 /**
  * middleware 用の Supabase クライアント。
@@ -10,7 +9,7 @@ import type { User } from '@supabase/supabase-js';
  */
 export async function updateSession(request: NextRequest): Promise<{
   response: NextResponse;
-  user: User | null;
+  isLoggedIn: boolean;
 }> {
   let response = NextResponse.next({ request });
 
@@ -35,11 +34,15 @@ export async function updateSession(request: NextRequest): Promise<{
     },
   );
 
-  // getSession() ではなく getUser() を使うこと。
-  // getUser() は Supabase 側でトークンを検証するため、改ざんされた Cookie を弾ける。
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getSession() ではなく getClaims() を使うこと。
+  // getClaims() は JWT の署名を検証するので、改ざんされた Cookie を弾ける。
+  // このプロジェクトの JWT は ES256（非対称鍵）なので、検証は手元で完結し
+  // Supabase への往復が要らない。理由と代償は lib/auth.ts の説明を参照。
+  //
+  // 期限が近いトークンは getClaims() の中で先に更新されるので、
+  // ここが「セッションを延ばす」役目を持っている点は今までと変わらない
+  // （更新後の Cookie は上の setAll がレスポンスに載せる）。
+  const { data } = await supabase.auth.getClaims();
 
-  return { response, user };
+  return { response, isLoggedIn: Boolean(data?.claims) };
 }
