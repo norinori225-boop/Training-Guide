@@ -4,7 +4,7 @@ import { FavoriteCount } from '@/components/FavoriteCount';
 import { SafetyNotice } from '@/components/SafetyNotice';
 import { StarIcon } from '@/components/StarIcon';
 import { GENRE_CODES, GENRE_OPTIONS } from '@/lib/constants';
-import { fetchTrainingCount } from '@/lib/queries';
+import { fetchTrainingCounts } from '@/lib/queries';
 
 export const metadata: Metadata = {
   title: 'ODORIKOトレーニング',
@@ -29,9 +29,9 @@ const HOW_TO_STEPS = [
 export default async function HomePage() {
   // 入口では件数しか使わないので、行は取らずに count だけを数える。
   // ジャンルは GENRE_CODES から回すので、増えても自動で並ぶ。
-  const counts = await Promise.all(
-    GENRE_CODES.map((genre) => fetchTrainingCount(genre)),
-  );
+  // 数え上げに失敗したジャンルは null で返る（バッジを出さないだけで、
+  // 入口そのものは必ず表示する）。詳しくは fetchTrainingCounts を参照。
+  const counts = await fetchTrainingCounts(GENRE_CODES);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-7 px-4 py-6">
@@ -132,8 +132,8 @@ function MenuButton({
   icon: React.ReactNode;
   title: string;
   description: string;
-  /** サーバーで数えた件数。省略すると件数バッジを出さない */
-  count?: number;
+  /** サーバーで数えた件数。null / 省略なら件数バッジを出さない */
+  count?: number | null;
   /** 件数をクライアントで出す場合はこちら（お気に入り用） */
   countSlot?: React.ReactNode;
 }) {
@@ -152,7 +152,7 @@ function MenuButton({
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-base font-bold text-slate-900">{title}</span>
-          {count !== undefined && (
+          {count != null && (
             <span className={COUNT_BADGE_CLASS}>{count}種目</span>
           )}
           {countSlot}

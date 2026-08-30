@@ -1,6 +1,14 @@
-import { createClient } from '@/lib/supabase/server';
+import { getPublicClient } from '@/lib/supabase/public';
 import { equipmentCodesByKeyword } from '@/lib/constants';
 import type { Category, GenreCode, Training, TrainingWithJoin } from '@/lib/types';
+
+/**
+ * このファイルの読み取りはすべて Cookie を持たない公開クライアント
+ * （lib/supabase/public.ts）を使う。ここで読むデータは RLS で anon に
+ * 開放されていて誰が見ても同じ内容なので、ログインセッションは要らない。
+ * セッション付きクライアント（lib/supabase/server.ts）は書き込み
+ * （app/actions/*）と認証（lib/auth.ts）専用。理由は public.ts のコメント参照。
+ */
 
 /** MVP の想定件数。ページネーションは作らない（100件到達時に将来対応）。 */
 const TRAINING_FETCH_LIMIT = 100;
@@ -31,7 +39,7 @@ function flatten(row: TrainingWithJoin): Training {
  * genre を渡すとそのジャンルだけ、省略すると全ジャンルを返す（管理画面用）。
  */
 export async function fetchTrainings(genre?: GenreCode): Promise<Training[]> {
-  const supabase = await createClient();
+  const supabase = getPublicClient();
 
   let request = supabase
     .from('trainings')
@@ -52,7 +60,7 @@ export async function fetchTrainings(genre?: GenreCode): Promise<Training[]> {
 
 /** 詳細用: id 指定で1件取得する。見つからなければ null */
 export async function fetchTrainingById(id: string): Promise<Training | null> {
-  const supabase = await createClient();
+  const supabase = getPublicClient();
 
   const { data, error } = await supabase
     .from('trainings')
@@ -73,7 +81,7 @@ export async function fetchTrainingById(id: string): Promise<Training | null> {
  * genre を渡すとそのジャンルのカテゴリーだけ、省略すると全件返す（管理画面用）。
  */
 export async function fetchCategories(genre?: GenreCode): Promise<Category[]> {
-  const supabase = await createClient();
+  const supabase = getPublicClient();
 
   let request = supabase
     .from('categories')
@@ -98,7 +106,7 @@ export async function fetchCategories(genre?: GenreCode): Promise<Category[]> {
  * 入口では件数しか使わないため、種目本体を取ってきて length を数えない。
  */
 export async function fetchTrainingCount(genre: GenreCode): Promise<number> {
-  const supabase = await createClient();
+  const supabase = getPublicClient();
 
   const { count, error } = await supabase
     .from('trainings')
@@ -116,6 +124,35 @@ export async function fetchTrainingCount(genre: GenreCode): Promise<number> {
   }
 
   return count ?? 0;
+}
+
+/**
+ * 入口画面用: ジャンルごとの件数をまとめて数える。**この関数は例外を投げない。**
+ *
+ * 件数はボタンに添える飾りのバッジなので、これが取れないことと
+ * 「画面を出せない」ことは別。1ジャンルの数え上げが失敗しただけで
+ * Promise.all が reject して入口ごと落ちる（＝「画面を読み込めませんでした」）
+ * のを避けるため、allSettled で受けて、失敗したジャンルだけ null にする。
+ * 呼び出し側は null のときバッジを出さない。
+ */
+export async function fetchTrainingCounts(
+  genres: readonly GenreCode[],
+): Promise<(number | null)[]> {
+  const results = await Promise.allSettled(
+    genres.map((genre) => fetchTrainingCount(genre)),
+  );
+
+  return results.map((result, index) => {
+    if (result.status === 'fulfilled') return result.value;
+
+    // 画面には出さないが、原因を追えるようサーバーログには必ず残す
+    // （Vercel の Runtime Logs で拾える）。
+    console.error(
+      `[fetchTrainingCounts] ${genres[index]} の件数取得に失敗したのでバッジを省略します`,
+      result.reason,
+    );
+    return null;
+  });
 }
 
 /**
@@ -173,7 +210,7 @@ export function filterTrainings(
 export async function fetchTrainingsForAdmin(
   genre?: GenreCode,
 ): Promise<Training[]> {
-  const supabase = await createClient();
+  const supabase = getPublicClient();
 
   let request = supabase
     .from('trainings')
@@ -204,7 +241,7 @@ export type CategoryWithUsage = Category & {
 export async function fetchCategoriesWithUsage(
   genre?: GenreCode,
 ): Promise<CategoryWithUsage[]> {
-  const supabase = await createClient();
+  const supabase = getPublicClient();
 
   let request = supabase
     .from('categories')
