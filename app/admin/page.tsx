@@ -58,15 +58,19 @@ async function AdminTrainingList({ genre }: { genre: GenreCode | null }) {
 
       <GenreTabs basePath="/admin" selected={genre} includeAll />
 
+      {/* この2つは管理画面で一番よく押される導線なので、中身ごと先読みしておく
+          （既定では骨組みまでしか先読みされず、タップしてから取得が始まる） */}
       <nav className="flex flex-col gap-2 sm:flex-row">
         <Link
           href={newHref}
+          prefetch
           className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-full bg-sky-600 px-5 text-sm font-bold text-white active:bg-sky-700"
         >
           ＋新しいトレーニング
         </Link>
         <Link
           href="/admin/categories"
+          prefetch
           className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-full border border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 active:bg-slate-100"
         >
           カテゴリー管理

@@ -7,6 +7,11 @@ import type { GenreCode } from '@/lib/types';
  *
  * 状態を URL の ?genre= に持たせるので、リロードしても選択が残り、
  * 保存後に戻ってきたときも同じタブが開いている。
+ *
+ * 各タブは prefetch を明示している。管理画面は毎回サーバーで組み立てる
+ * ページなので、既定のままだと読み込み中の骨組みまでしか先読みされず、
+ * 中身はタップしてから取りに行くことになる（＝切り替えのたびに待つ）。
+ * タブは常に画面の上に出ていて先読みが確実に走るうえ、数も2〜3本しかない。
  */
 export function GenreTabs({
   basePath,
@@ -46,6 +51,7 @@ export function GenreTabs({
           <li key={tab.key} className="flex-1">
             <Link
               href={tab.href}
+              prefetch
               aria-current={tab.isSelected ? 'true' : undefined}
               className={`flex min-h-[44px] items-center justify-center rounded-full border px-3 text-sm font-bold transition ${
                 tab.isSelected

@@ -44,6 +44,7 @@ async function CategoryAdmin({ genre }: { genre: GenreCode }) {
 
       <Link
         href="/admin"
+        prefetch
         className="inline-flex min-h-[44px] items-center text-sm font-medium text-sky-700 active:text-sky-900"
       >
         ← トレーニング管理にもどる
