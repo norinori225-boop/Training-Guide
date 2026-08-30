@@ -12,12 +12,17 @@
  * - 画像              … キャッシュを出しつつ裏で取り直す。増えすぎないよう上限あり
  * - それ以外          … 何もしない（素通し）
  *
- * ■ 「まずキャッシュ」の代償
- * 管理画面で種目を足した直後にアプリを起動すると、1回目は前回の内容が出て、
- * 2回目から新しくなる。ネットワークを待ってから表示する作りにすればズレは
- * 無くなるが、それでは電波の悪い場所で起動が遅いという元の問題に戻る。
- * 追加・編集をした本人のその場での確認は、下の「素通し」の対象になっている
- * ルーター用のデータ要求（RSC）と /admin を通るので、ズレずに見える。
+ * ■ 先に出したものが古かったときの後始末
+ * キャッシュを先に出す以上、管理画面で種目を足した直後の起動では、一度は
+ * 前回の内容が出てしまう。これを「次に起動するまで古いまま」で終わらせない
+ * ために、裏で取り直した結果が前回と違っていたかを覚えておき、画面側から
+ * 聞かれたら答える（revalidations と CHECK_MESSAGE）。
+ * 聞いた側（components/ServiceWorkerRegistrar.tsx）が router.refresh() を
+ * 呼ぶので、開いたまま新しい内容に入れ替わる。
+ *
+ * 「こちらから知らせる」形にしないのは、取り直しがミリ秒で終わるのに対して
+ * 画面側が受け取れるようになるのはハイドレーション後で、ほぼ確実に取りこぼす
+ * ため。画面側から聞きに行けば、取り直しの途中でも終わったあとでも拾える。
  *
  * ■ 直したいときは
  * CACHE_VERSION を上げれば、古いキャッシュは activate ですべて捨てられる。
@@ -35,6 +40,21 @@ const OFFLINE_URL = '/offline.html';
 
 /** 画像キャッシュに残す最大件数（古いものから捨てる） */
 const IMAGE_CACHE_LIMIT = 60;
+
+/**
+ * 画面側とやりとりする合図。
+ * components/ServiceWorkerRegistrar.tsx と揃えること。
+ */
+const CHECK_MESSAGE = 'odoriko:was-it-stale';
+const PAGE_UPDATED_MESSAGE = 'odoriko:page-updated';
+
+/**
+ * 「今出したページの取り直し」の控え。URL → 「前回と違っていたか」の約束。
+ *
+ * 取り直しの最中に聞かれても答えられるよう、結果ではなく約束（Promise）を
+ * 入れている。一度答えたら消す。
+ */
+const revalidations = new Map();
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -67,6 +87,32 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * 「さっき自分に出してくれたページ、古くなかった？」への返事。
+ *
+ * 取り直しがまだ終わっていなければ、終わるまで待ってから答える。
+ * 違っていた場合だけ返事を出し、受け取った画面が中身を取り直す。
+ */
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== CHECK_MESSAGE || typeof data.url !== 'string') return;
+
+  event.waitUntil(
+    (async () => {
+      const url = new URL(data.url);
+      const key = url.origin + url.pathname;
+
+      const pending = revalidations.get(key);
+      if (!pending) return;
+      revalidations.delete(key);
+
+      if (await pending) {
+        event.source?.postMessage({ type: PAGE_UPDATED_MESSAGE });
+      }
+    })(),
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
@@ -90,7 +136,7 @@ self.addEventListener('fetch', (event) => {
   if (request.headers.get('RSC') || url.searchParams.has('_rsc')) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(handlePage(request, url));
+    event.respondWith(handlePage(event, request, url));
     return;
   }
 
@@ -100,7 +146,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.pathname.startsWith('/_next/image') || url.pathname.startsWith('/icons/')) {
-    event.respondWith(staleWhileRevalidate(request, request, IMAGE_CACHE, IMAGE_CACHE_LIMIT));
+    event.respondWith(
+      staleWhileRevalidate(event, request, request, IMAGE_CACHE, {
+        limit: IMAGE_CACHE_LIMIT,
+      }),
+    );
   }
 });
 
@@ -111,9 +161,13 @@ self.addEventListener('fetch', (event) => {
  * 絞り込みはブラウザ側で行う作りなので（components/TrainingList.tsx）、
  * 同じ道なら中身は同じ。条件ごとに別々に貯めても無駄になる。
  */
-function handlePage(request, url) {
+function handlePage(event, request, url) {
   const key = new Request(url.origin + url.pathname);
-  return staleWhileRevalidate(request, key, PAGE_CACHE, null, OFFLINE_URL);
+  return staleWhileRevalidate(event, request, key, PAGE_CACHE, {
+    fallback: OFFLINE_URL,
+    // 古いものを出していたら画面側に答えられるようにする（先頭の説明を参照）
+    trackChanges: true,
+  });
 }
 
 /** 中身が変わったら URL も変わるもの向け。あればキャッシュ、無ければ取りに行く */
@@ -130,30 +184,48 @@ async function cacheFirst(request, cacheName) {
 /**
  * あればキャッシュを即返し、裏で取り直して次回に備える。
  *
- * @param request   実際にネットワークへ投げる要求
- * @param key       キャッシュに出し入れするときの鍵（request と違ってよい）
- * @param limit     残す件数の上限。null なら無制限
- * @param fallback  キャッシュもネットワークも駄目だったときに返す URL
+ * @param event   この応答のもとになった fetch イベント
+ * @param request 実際にネットワークへ投げる要求
+ * @param key     キャッシュに出し入れするときの鍵（request と違ってよい）
+ * @param options.limit         残す件数の上限。省略なら無制限
+ * @param options.fallback      キャッシュもネットワークも駄目なときに返す URL
+ * @param options.trackChanges  古いものを出したかどうかを控えておくか
  */
-async function staleWhileRevalidate(request, key, cacheName, limit, fallback) {
+async function staleWhileRevalidate(event, request, key, cacheName, options = {}) {
+  const { limit, fallback, trackChanges } = options;
+
   const cache = await caches.open(cacheName);
   const hit = await cache.match(key);
+
+  // hit は呼び出し元へ返すので、比べる用には複製を取る（本文は一度しか読めない）
+  const previous = trackChanges && hit ? hit.clone() : null;
 
   const fresh = fetch(request)
     .then(async (response) => {
       // 404 やエラーを掴んだまま貯めない
-      if (response.ok) {
-        await cache.put(key, response.clone());
-        if (limit) await trimCache(cache, limit);
-      }
-      return response;
+      if (!response.ok) return { response, changed: false };
+
+      const forCompare = previous ? response.clone() : null;
+      await cache.put(key, response.clone());
+      if (limit) await trimCache(cache, limit);
+
+      const changed = forCompare ? await hasChanged(previous, forCompare) : false;
+      return { response, changed };
     })
     .catch(() => null);
 
-  if (hit) return hit;
+  if (hit) {
+    if (trackChanges) {
+      revalidations.set(key.url, fresh.then((result) => Boolean(result && result.changed)));
+    }
+    // キャッシュを返したあとも取り直しを最後までやらせる。
+    // これが無いと、応答を返した時点でワーカーが止められることがある。
+    event.waitUntil(fresh);
+    return hit;
+  }
 
-  const response = await fresh;
-  if (response) return response;
+  const result = await fresh;
+  if (result) return result.response;
 
   if (fallback) {
     const offline = await cache.match(fallback);
@@ -161,6 +233,21 @@ async function staleWhileRevalidate(request, key, cacheName, limit, fallback) {
   }
 
   return Response.error();
+}
+
+/**
+ * 前に返したものと、取り直したものが違うかどうか。
+ *
+ * ETag があればそれだけで判定できる（本文を読まずに済む）。
+ * 無い場合だけ本文どうしを突き合わせる。
+ */
+async function hasChanged(previous, fresh) {
+  const previousTag = previous.headers.get('ETag');
+  const freshTag = fresh.headers.get('ETag');
+  if (previousTag && freshTag) return previousTag !== freshTag;
+
+  const [before, after] = await Promise.all([previous.text(), fresh.text()]);
+  return before !== after;
 }
 
 /** 古いものから捨てて、件数を上限内に収める */
