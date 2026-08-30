@@ -11,3 +11,27 @@ export function CardSkeleton() {
     </div>
   );
 }
+
+/**
+ * 一覧（検索欄＋チップ＋カード）の読み込み中表示。
+ * loading.tsx（ルート遷移中）と、page.tsx の Suspense 境界
+ * （URL の絞り込み条件を読むまでの間）の両方で使う。
+ */
+export function ListSkeleton() {
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="h-11 w-full animate-pulse rounded-full bg-slate-200" />
+      <div className="flex gap-2">
+        <div className="h-11 w-20 animate-pulse rounded-full bg-slate-200" />
+        <div className="h-11 w-28 animate-pulse rounded-full bg-slate-200" />
+        <div className="h-11 w-24 animate-pulse rounded-full bg-slate-200" />
+      </div>
+      <div className="flex flex-col gap-4">
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+      <span className="sr-only">読み込み中です</span>
+    </div>
+  );
+}

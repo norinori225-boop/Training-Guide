@@ -51,6 +51,9 @@ function revalidateCategories() {
     revalidatePath(`/list/${genre}`);
   }
   revalidatePath('/admin/categories');
+
+  // お気に入りのカードにもカテゴリー名が出るので、こちらも作り直す
+  revalidatePath('/favorites');
 }
 
 export async function createCategoryAction(

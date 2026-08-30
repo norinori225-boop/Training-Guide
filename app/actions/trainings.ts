@@ -66,6 +66,9 @@ function revalidateTraining(
   }
 
   revalidatePath(`/training/${trainingId}`);
+
+  // お気に入りは全ジャンルの種目を丸ごと載せているので、こちらも作り直す
+  revalidatePath('/favorites');
 }
 
 type SelectedCategory = { id: string; sort_order: number };

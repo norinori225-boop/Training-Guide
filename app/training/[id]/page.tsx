@@ -8,7 +8,7 @@ import {
   GENRE_LABELS,
   PEOPLE_LABELS,
 } from '@/lib/constants';
-import { fetchTrainingById } from '@/lib/queries';
+import { fetchTrainingById, fetchTrainingIds } from '@/lib/queries';
 import { getYouTubeEmbedUrl } from '@/lib/youtube';
 import { BackLink } from '@/components/BackLink';
 import { Checklist } from '@/components/Checklist';
@@ -17,8 +17,41 @@ import { IntensityBadge } from '@/components/IntensityBadge';
 import { SafetyNotice } from '@/components/SafetyNotice';
 import { TrainingThumbnail } from '@/components/TrainingThumbnail';
 
-// 管理画面での変更がすぐ反映されるよう、詳細も常に動的レンダリングにする。
-export const dynamic = 'force-dynamic';
+/**
+ * 詳細は静的に作っておき、管理画面で変更があったときだけ作り直す
+ * （app/actions/* の revalidatePath が呼ぶ）。
+ * これで起動・遷移のたびにサーバー実行と Supabase 往復が走らなくなる。
+ *
+ * 数字は「revalidatePath が届かなかった場合の保険」。Supabase の管理画面から
+ * 直接データを触ったときなど、アプリを通らない変更でも1時間で追いつく。
+ */
+export const revalidate = 3600;
+
+/**
+ * 登録済みの種目はビルド時にまとめて作っておく。
+ *
+ * これを書かないと、詳細ページは「毎回サーバーで組み立てる」扱いのままになり
+ * （dynamicParams の既定動作）、開くたびに Supabase 往復が入る。
+ * ここに無い id（ビルド後に追加された種目）は最初に開かれたときに作られ、
+ * 以降はキャッシュから返る。
+ *
+ * ⚠️ id を数えられなくてもビルドは通す。ここで失敗するのは Supabase が
+ * 一時停止しているような場面で、そのときに「デプロイごと落ちる」のは割に
+ * 合わない。全ページが上の「最初に開かれたときに作る」経路に乗るだけで、
+ * 表示自体は変わらない。
+ */
+export async function generateStaticParams() {
+  try {
+    const ids = await fetchTrainingIds();
+    return ids.map((id) => ({ id }));
+  } catch (error) {
+    console.error(
+      '[generateStaticParams] 詳細ページの事前生成をあきらめました（初回アクセス時に生成されます）',
+      error,
+    );
+    return [];
+  }
+}
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -8,8 +8,15 @@ export const metadata: Metadata = {
   description: 'あとでやりたい種目をまとめて見られます。',
 };
 
-// 管理画面での変更をすぐ反映したいので、常に動的レンダリングにする。
-export const dynamic = 'force-dynamic';
+/**
+ * お気に入りは静的に作っておき、管理画面で変更があったときだけ作り直す
+ * （app/actions/* の revalidatePath が呼ぶ）。
+ * これで起動・遷移のたびにサーバー実行と Supabase 往復が走らなくなる。
+ *
+ * 数字は「revalidatePath が届かなかった場合の保険」。Supabase の管理画面から
+ * 直接データを触ったときなど、アプリを通らない変更でも1時間で追いつく。
+ */
+export const revalidate = 3600;
 
 /**
  * お気に入り。

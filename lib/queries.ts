@@ -1,5 +1,4 @@
 import { getPublicClient } from '@/lib/supabase/public';
-import { equipmentCodesByKeyword } from '@/lib/constants';
 import type { Category, GenreCode, Training, TrainingWithJoin } from '@/lib/types';
 
 /**
@@ -156,47 +155,22 @@ export async function fetchTrainingCounts(
 }
 
 /**
- * キーワード検索とカテゴリー絞り込み（サーバー側で実行する）。
- *
- * 検索対象: 題名 / 簡単な説明 / 詳しい説明 / カテゴリー名 / 道具の表示名 /
- *           「その他」の道具名（equipment_other）
- * 道具は DB にコード値（ladder 等）で入っているので、lib/constants.ts の
- * 逆引きで検索語をコード値へ変換してから突き合わせる（「ラダー」→ ladder）。
- * 「その他」の道具名だけはコード値ではなく生の文字列なので、題名などと同じ
- * 部分一致で拾う（「なわとび」でその道具を使う種目が出る）。
+ * 詳細ページをビルド時に作っておくための id 一覧（app/training/[id] 用）。
+ * 本文は要らないので id だけ取る。
  */
-export function filterTrainings(
-  trainings: Training[],
-  options: { query?: string; categorySlug?: string },
-): Training[] {
-  const query = (options.query ?? '').trim().toLowerCase();
-  const categorySlug = options.categorySlug ?? '';
+export async function fetchTrainingIds(): Promise<string[]> {
+  const supabase = getPublicClient();
 
-  // 検索語に部分一致する道具コード（例:「ラダー」→ ['ladder']）
-  const equipmentCodes = query ? equipmentCodesByKeyword(query) : [];
+  const { data, error } = await supabase
+    .from('trainings')
+    .select('id')
+    .limit(TRAINING_FETCH_LIMIT);
 
-  return trainings.filter((training) => {
-    if (categorySlug) {
-      const hasCategory = training.categories.some((c) => c.slug === categorySlug);
-      if (!hasCategory) return false;
-    }
+  if (error) {
+    throw new Error(`トレーニングIDの取得に失敗しました: ${error.message}`);
+  }
 
-    if (!query) return true;
-
-    const haystack = [
-      training.title,
-      training.short_description,
-      training.description,
-      training.equipment_other ?? '',
-      ...training.categories.map((c) => c.name),
-    ]
-      .join('\n')
-      .toLowerCase();
-
-    if (haystack.includes(query)) return true;
-
-    return equipmentCodes.some((code) => training.equipment.includes(code));
-  });
+  return ((data ?? []) as { id: string }[]).map((row) => row.id);
 }
 
 /* ------------------------------------------------------------------ */

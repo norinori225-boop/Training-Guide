@@ -14,6 +14,34 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '6mb',
     },
   },
+  /**
+   * サービスワーカー（public/sw.js）だけは、必ず最新のものが取られるようにする。
+   * ここが普通にキャッシュされると、直したはずの sw.js が古いまま居座って
+   * 「キャッシュを消せない」状態になる。
+   */
+  async headers() {
+    return [
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+          {
+            // sw.js 自身が実行できることを同一オリジンに限る。
+            // 外部サイトへ取りに行く処理を sw.js に足すときは、ここも見直すこと。
+            key: 'Content-Security-Policy',
+            value: "default-src 'self'; script-src 'self'",
+          },
+        ],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

@@ -1,15 +1,28 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Suspense } from 'react';
-import { CategoryChips } from '@/components/CategoryChips';
 import { SafetyNotice } from '@/components/SafetyNotice';
-import { SearchBox } from '@/components/SearchBox';
-import { TrainingCard } from '@/components/TrainingCard';
-import { GENRE_LABELS, isGenreCode } from '@/lib/constants';
-import { fetchCategories, fetchTrainings, filterTrainings } from '@/lib/queries';
+import { ListSkeleton } from '@/components/Skeletons';
+import { TrainingList } from '@/components/TrainingList';
+import { GENRE_CODES, GENRE_LABELS, isGenreCode } from '@/lib/constants';
+import { fetchCategories, fetchTrainings } from '@/lib/queries';
 
-// 管理画面での変更がすぐ反映されるよう、一覧は常に動的レンダリングにする。
-export const dynamic = 'force-dynamic';
+/**
+ * 一覧は静的に作っておき、管理画面で変更があったときだけ作り直す
+ * （app/actions/* の revalidatePath が呼ぶ）。
+ * これで起動・遷移のたびにサーバー実行と Supabase 往復が走らなくなる。
+ *
+ * 数字は「revalidatePath が届かなかった場合の保険」。Supabase の管理画面から
+ * 直接データを触ったときなど、アプリを通らない変更でも1時間で追いつく。
+ */
+export const revalidate = 3600;
+
+/**
+ * ジャンルは2本しかないので、両方ともビルド時に作っておく。
+ * これを書かないと「最初に開いた人」だけがサーバー生成を待つことになる。
+ */
+export function generateStaticParams() {
+  return GENRE_CODES.map((genre) => ({ genre }));
+}
 
 export async function generateMetadata({
   params,
@@ -28,7 +41,6 @@ export async function generateMetadata({
 
 export default async function GenreListPage({
   params,
-  searchParams,
 }: PageProps<'/list/[genre]'>) {
   const { genre } = await params;
 
@@ -36,105 +48,30 @@ export default async function GenreListPage({
   // ここに来る genre は必ず定義済みだが、型を絞るために同じ判定を通す。
   if (!isGenreCode(genre)) return null;
 
-  const search = await searchParams;
-
-  const query = typeof search.q === 'string' ? search.q : '';
-  const categorySlug =
-    typeof search.category === 'string' ? search.category : '';
-
   // 種目もカテゴリーも、このジャンルのぶんだけを取る。
-  // キーワード検索はこの絞り込み済みデータに対して行うので、同じジャンル内で閉じる。
+  // 検索・絞り込みは URL の ?q= / ?category= を見て TrainingList が行う。
+  // ここで searchParams を読まないので、このページは条件によらず1枚の
+  // 静的 HTML になり、CDN から即返せる（TrainingList の説明も参照）。
   const [trainings, categories] = await Promise.all([
     fetchTrainings(genre),
     fetchCategories(genre),
   ]);
 
-  const basePath = `/list/${genre}`;
-  const filtered = filterTrainings(trainings, { query, categorySlug });
-  const isFiltering = Boolean(query || categorySlug);
-
   return (
     <>
-      <div className="flex flex-col gap-3">
-        <Suspense fallback={<div className="min-h-[44px]" />}>
-          <SearchBox query={query} />
-        </Suspense>
-
-        <CategoryChips
+      {/* TrainingList は URL の絞り込み条件を読む＝ブラウザ側でしか確定しないので、
+          静的 HTML には骨組みを入れておき、読み込み後に中身へ差し替える。 */}
+      <Suspense fallback={<ListSkeleton />}>
+        <TrainingList
+          trainings={trainings}
           categories={categories}
-          selectedSlug={categorySlug}
-          query={query}
-          basePath={basePath}
+          basePath={`/list/${genre}`}
         />
-      </div>
-
-      <p className="text-xs text-slate-500" aria-live="polite">
-        {filtered.length}件
-        {isFiltering && ` / 全${trainings.length}件`}
-      </p>
-
-      {filtered.length > 0 ? (
-        <ul className="flex flex-col gap-4">
-          {filtered.map((training, index) => (
-            <TrainingCard
-              key={training.id}
-              training={training}
-              priority={index === 0}
-            />
-          ))}
-        </ul>
-      ) : (
-        <EmptyState hasTrainings={trainings.length > 0} basePath={basePath} />
-      )}
+      </Suspense>
 
       <footer className="mt-2 border-t border-slate-200 pt-4">
         <SafetyNotice />
       </footer>
     </>
-  );
-}
-
-/**
- * 空状態は2種類ある。
- * - そのジャンルにまだ1件も種目が無い → 準備中。絞り込みを外しても増えないので導線は出さない
- * - 絞り込んだ結果が0件 → 条件を外せば見つかるので「すべて表示に戻る」を出す
- */
-function EmptyState({
-  hasTrainings,
-  basePath,
-}: {
-  hasTrainings: boolean;
-  basePath: string;
-}) {
-  if (!hasTrainings) {
-    return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-        <p className="text-4xl" aria-hidden="true">
-          🚧
-        </p>
-        <p className="mt-3 text-sm text-slate-600">
-          準備中です。
-          <br />
-          もうしばらくお待ちください。
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-      <p className="text-4xl" aria-hidden="true">
-        🔍
-      </p>
-      <p className="mt-3 text-sm text-slate-600">
-        条件に合うトレーニングが見つかりませんでした。
-      </p>
-      <Link
-        href={basePath}
-        className="mt-4 inline-flex min-h-[44px] items-center rounded-full bg-sky-600 px-5 text-sm font-bold text-white active:bg-sky-700"
-      >
-        すべて表示に戻る
-      </Link>
-    </div>
   );
 }
